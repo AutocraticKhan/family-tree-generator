@@ -1,0 +1,10 @@
+id,name,birthDate,deathDate,gender,color,emoji,bio,generation,x,y,approved,addedBy
+1,Arthur Pendelton,1942-03-12,2018-11-05,male,0,👴,"Patriarch, passionate carpenter, loved jazz.",0,420,110,true,admin
+2,Eleanor Vance,1945-07-22,,female,3,👵,"Retired botanist, master gardener, classical pianist.",0,640,110,true,admin
+3,Charles Pendelton,1970-05-15,,male,5,👨,"Software architect, high-altitude mountaineer.",1,250,310,true,admin
+4,Diana Ross-Pendelton,1973-09-02,,female,1,👩,"Pediatric surgeon, watercolor painter.",1,470,310,true,admin
+5,Beatrice Pendelton,1975-12-10,,female,0,👩,"Environmental journalist, documentary filmmaker.",1,760,310,true,admin
+6,Julian Mercer,1972-04-18,,male,2,👨,"Chef and owner of ""The Hearth"" bistro.",1,980,310,true,admin
+7,Fiona Pendelton,2001-08-24,,female,4,👧,Graduate student in aerospace engineering.,2,150,510,true,admin
+8,Gabriel Pendelton,2004-11-30,,male,0,👦,"Competitive chess player, college freshman.",2,370,510,true,admin
+9,Henry Mercer,2008-01-14,,male,1,👦,"Soccer captain, VR enthusiast.",2,860,510,true,admin

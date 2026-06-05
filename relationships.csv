@@ -1,0 +1,16 @@
+id,person1Id,person2Id,type,approved,addedBy
+r1,1,2,spouse,true,admin
+r2,3,4,spouse,true,admin
+r3,5,6,spouse,true,admin
+r4,3,5,sibling,true,admin
+r5,7,8,sibling,true,admin
+r6,1,3,parent-child,true,admin
+r7,2,3,parent-child,true,admin
+r8,1,5,parent-child,true,admin
+r9,2,5,parent-child,true,admin
+r10,3,7,parent-child,true,admin
+r11,4,7,parent-child,true,admin
+r12,3,8,parent-child,true,admin
+r13,4,8,parent-child,true,admin
+r14,5,9,parent-child,true,admin
+r15,6,9,parent-child,true,admin

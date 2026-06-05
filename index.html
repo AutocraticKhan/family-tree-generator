@@ -6,7 +6,7 @@
   <title>Kinship Explorer - Interactive Family Workspace</title>
   
   <!-- SEO Meta Tags -->
-  <meta name="description" content="An interactive, premium family tree workspace for visualizing, adding, and organizing family relations with smooth canvas panning, zooming, auto-alignment, and local JSON sync.">
+  <meta name="description" content="An interactive, premium family tree workspace for visualizing, adding, and organizing family relations with smooth canvas panning, zooming, auto-alignment, and local CSV sync.">
   
   <!-- Google Fonts - Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -172,12 +172,12 @@
         <button id="btnAlign" class="btn-canvas-control" title="Automatically align all family cards by generation">
           <span aria-hidden="true">⊞</span> Align
         </button>
-        <button id="btnExport" class="btn-canvas-control" title="Export current data state as a JSON file">
+        <button id="btnExport" class="btn-canvas-control" title="Export current data state as CSV files (members.csv + relationships.csv)">
           <span aria-hidden="true">⬇</span> Export
         </button>
-        <label id="btnImportLabel" class="btn-canvas-control btn-file-import-label" title="Import a JSON family tree file">
+        <label id="btnImportLabel" class="btn-canvas-control btn-file-import-label" title="Import a CSV family tree file (members.csv and/or relationships.csv)">
           <span aria-hidden="true">⬆</span> Import
-          <input type="file" id="fileImportInput" accept=".json" style="display: none;">
+          <input type="file" id="fileImportInput" accept=".csv" multiple style="display: none;">
         </label>
         <button id="btnThemeToggle" class="btn-canvas-control btn-theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
           <svg class="theme-toggle-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -346,7 +346,19 @@
             </select>
           </div>
         </div>
-        
+
+        <div class="form-group">
+          <label for="memberDialogMilkMother" class="form-label">Milk mother (إخوة الرضاعة) — optional</label>
+          <select id="memberDialogMilkMother" class="form-select">
+            <option value="">— none —</option>
+            <!-- Populated dynamically by openMemberModalForAdd / openMemberModalForEdit -->
+          </select>
+          <div style="font-size: 10px; color: var(--color-text-tertiary); margin-top: 4px; line-height: 1.4;">
+            Two people breastfed by the same woman (other than their biological mother) are considered
+            foster / milk siblings. Setting this enables that block in the sibling rules.
+          </div>
+        </div>
+
         <div class="form-group">
           <label for="memberDialogBio" class="form-label">Biography / notes</label>
           <textarea id="memberDialogBio" class="dialog-textarea" placeholder="A short description…" rows="3"></textarea>
