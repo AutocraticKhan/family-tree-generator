@@ -116,6 +116,7 @@
   const elBtnExport = document.getElementById('btnExport');
   const elFileImportInput = document.getElementById('fileImportInput');
   const elBtnImportLabel = document.getElementById('btnImportLabel');
+  const elBtnThemeToggle = document.getElementById('btnThemeToggle');
   
   const elBtnZoomIn = document.getElementById('btnZoomIn');
   const elBtnZoomOut = document.getElementById('btnZoomOut');
@@ -1400,6 +1401,35 @@
         }
       });
     });
+
+    // 3.5 Theme Toggle
+    if (elBtnThemeToggle) {
+      elBtnThemeToggle.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        let newTheme = 'light';
+        
+        if (currentTheme === 'light') {
+          newTheme = 'dark';
+        } else if (currentTheme === 'dark') {
+          newTheme = 'light';
+        } else {
+          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          newTheme = prefersDark ? 'light' : 'dark';
+        }
+        
+        document.documentElement.setAttribute('data-theme', newTheme);
+        
+        // Update the meta color-scheme tag so native browser UI updates immediately
+        const metaColorScheme = document.querySelector('meta[name="color-scheme"]');
+        if (metaColorScheme) {
+          metaColorScheme.setAttribute('content', newTheme);
+        }
+        
+        localStorage.setItem('theme', newTheme);
+        renderAll();
+        showAlert(`Theme changed to ${newTheme} mode`);
+      });
+    }
 
     // 4. Sidebar footer actions
     elBtnOpenAddMember.addEventListener('click', () => {
