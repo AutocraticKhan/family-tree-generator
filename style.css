@@ -1363,3 +1363,98 @@ dialog[open]::backdrop {
     opacity: 1;
   }
 }
+
+/* ── ROLE-BASED ACCESS CONTROL (RBAC) STYLING ─────────────────────────────── */
+.role-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  user-select: none;
+  display: inline-block;
+}
+.role-badge.guest {
+  background-color: var(--color-border-primary);
+  color: var(--color-text-secondary);
+}
+.role-badge.admin {
+  background-color: var(--color-brand-light);
+  color: var(--color-brand);
+  box-shadow: 0 0 6px rgba(83, 74, 183, 0.15);
+}
+
+.btn-admin-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+.btn-admin-toggle:hover {
+  transform: scale(1.2);
+}
+
+/* Temporary/Pending Node Card styles */
+.node-card.pending {
+  border: 1px dashed var(--color-text-tertiary) !important;
+  background-color: var(--color-background-secondary);
+  box-shadow: none;
+}
+.node-card.pending:hover {
+  border-color: var(--color-brand) !important;
+}
+
+/* Moderation Buttons styling */
+.btn-moderation-approve {
+  background-color: #1D9E75 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: opacity 0.2s;
+}
+.btn-moderation-approve:hover {
+  opacity: 0.9;
+}
+
+.btn-moderation-reject {
+  background-color: #A32D2D !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: opacity 0.2s;
+}
+.btn-moderation-reject:hover {
+  opacity: 0.9;
+}
+
+.moderation-status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--color-text-tertiary);
+  background-color: var(--color-background-secondary);
+  border: 0.5px dashed var(--color-border-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  display: inline-block;
+  letter-spacing: 0.05em;
+}
+

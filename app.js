@@ -75,6 +75,9 @@
   // Alert timeouts
   let alertTimeout = null;
 
+  // Role status
+  let userRole = 'member'; // 'admin' or 'member'
+
   // Dialog fields memory
   let memberDialogEmoji = '👤';
   let memberDialogColor = 0;
@@ -151,6 +154,15 @@
   const elAlertToastDot = document.getElementById('alertToastDot');
   const elAlertToastText = document.getElementById('alertToastText');
 
+  // Admin / RBAC elements
+  const elRoleBadge = document.getElementById('roleBadge');
+  const elBtnAdminToggle = document.getElementById('btnAdminToggle');
+  const elLoginDialog = document.getElementById('loginDialog');
+  const elBtnLoginDialogClose = document.getElementById('btnLoginDialogClose');
+  const elAdminPasswordInput = document.getElementById('adminPasswordInput');
+  const elBtnLoginCancel = document.getElementById('btnLoginCancel');
+  const elBtnLoginSubmit = document.getElementById('btnLoginSubmit');
+
   // ─── INITIALIZATION ─────────────────────────────────────────────────────────
   function init() {
     loadData().then(() => {
@@ -167,8 +179,8 @@
       try {
         const d = JSON.parse(stored);
         if (d.members && d.relationships) {
-          members = d.members;
-          relationships = d.relationships;
+          members = d.members.map(m => Object.assign({ approved: true, addedBy: 'admin' }, m));
+          relationships = d.relationships.map(r => Object.assign({ approved: true, addedBy: 'admin' }, r));
           return;
         }
       } catch (e) {
@@ -182,8 +194,8 @@
       if (response.ok) {
         const d = await response.json();
         if (d.members && d.relationships) {
-          members = d.members;
-          relationships = d.relationships;
+          members = d.members.map(m => Object.assign({ approved: true, addedBy: 'admin' }, m));
+          relationships = d.relationships.map(r => Object.assign({ approved: true, addedBy: 'admin' }, r));
           saveToLocalStorage();
           return;
         }
@@ -193,8 +205,8 @@
     }
 
     // 3. Fallback to default copy
-    members = JSON.parse(JSON.stringify(DEFAULT_DATA.members));
-    relationships = JSON.parse(JSON.stringify(DEFAULT_DATA.relationships));
+    members = JSON.parse(JSON.stringify(DEFAULT_DATA.members)).map(m => Object.assign({ approved: true, addedBy: 'admin' }, m));
+    relationships = JSON.parse(JSON.stringify(DEFAULT_DATA.relationships)).map(r => Object.assign({ approved: true, addedBy: 'admin' }, r));
     saveToLocalStorage();
   }
 
@@ -203,6 +215,16 @@
   }
 
   // ─── HELPERS ────────────────────────────────────────────────────────────────
+  function canModifyMember(member) {
+    if (userRole === 'admin') return true;
+    return member.addedBy === 'member' && !member.approved;
+  }
+
+  function canModifyRelation(rel) {
+    if (userRole === 'admin') return true;
+    return rel.addedBy === 'member' && !rel.approved;
+  }
+
   const nodeCenter = (m) => ({ x: m.x + NODE_W / 2, y: m.y + NODE_H / 2 });
 
   function buildPath(rel, membersList) {
@@ -441,15 +463,20 @@
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', rMeta.color);
       path.setAttribute('stroke-width', isHighlighted ? '2.5' : '1.5');
-      if (r.type === 'sibling') {
+      const isPending = !r.approved;
+      if (r.type === 'sibling' || isPending) {
         path.setAttribute('stroke-dasharray', '6,4');
       }
       path.setAttribute('stroke-linecap', 'round');
       
       // Calculate opacity
-      let opacity = '0.7';
+      let opacity = isPending ? '0.35' : '0.7';
       if (selectedId) {
-        opacity = isHighlighted ? '1' : '0.15';
+        if (isHighlighted) {
+          opacity = isPending ? '0.6' : '1';
+        } else {
+          opacity = '0.15';
+        }
       }
       path.setAttribute('opacity', opacity);
 
@@ -477,7 +504,8 @@
 
       // Create card element
       const card = document.createElement('div');
-      card.className = `node-card node-color-${m.color} ${isSelected ? 'selected' : ''} ${linkedRel ? 'linked' : ''} ${isFaded ? 'faded' : ''}`;
+      const isPending = !m.approved;
+      card.className = `node-card node-color-${m.color} ${isSelected ? 'selected' : ''} ${linkedRel ? 'linked' : ''} ${isFaded ? 'faded' : ''} ${isPending ? 'pending' : ''}`;
       card.style.left = `${m.x}px`;
       card.style.top = `${m.y}px`;
       card.setAttribute('data-id', m.id);
@@ -487,7 +515,13 @@
         const tag = document.createElement('div');
         tag.className = 'node-relation-tag';
         tag.style.backgroundColor = REL_TYPES[linkedRel.type].color;
-        tag.textContent = REL_TYPES[linkedRel.type].label;
+        tag.textContent = REL_TYPES[linkedRel.type].label + (isPending ? ' (Pending)' : '');
+        card.appendChild(tag);
+      } else if (isPending) {
+        const tag = document.createElement('div');
+        tag.className = 'node-relation-tag';
+        tag.style.backgroundColor = '#BA7517'; // Amber color for pending alert badge
+        tag.textContent = 'Pending Approval';
         card.appendChild(tag);
       }
 
@@ -624,30 +658,73 @@
     const actionBox = document.createElement('div');
     actionBox.className = 'detail-action-buttons';
 
-    const btnEdit = document.createElement('button');
-    btnEdit.className = 'btn-detail-action';
-    btnEdit.innerHTML = '✏️';
-    btnEdit.title = 'Edit member details';
-    btnEdit.addEventListener('click', () => {
-      openMemberModalForEdit(member);
-    });
+    const canModify = canModifyMember(member);
 
-    const btnDelete = document.createElement('button');
-    btnDelete.className = 'btn-detail-action';
-    btnDelete.innerHTML = '🗑';
-    btnDelete.title = 'Remove member';
-    btnDelete.addEventListener('click', () => {
-      if (confirm(`Are you sure you want to remove ${member.name}? All relationship links involving them will be deleted.`)) {
-        deleteMember(member.id);
-      }
-    });
+    if (canModify) {
+      const btnEdit = document.createElement('button');
+      btnEdit.className = 'btn-detail-action';
+      btnEdit.innerHTML = '✏️';
+      btnEdit.title = 'Edit member details';
+      btnEdit.addEventListener('click', () => {
+        openMemberModalForEdit(member);
+      });
+      actionBox.appendChild(btnEdit);
 
-    actionBox.appendChild(btnEdit);
-    actionBox.appendChild(btnDelete);
+      const btnDelete = document.createElement('button');
+      btnDelete.className = 'btn-detail-action';
+      btnDelete.innerHTML = '🗑';
+      btnDelete.title = 'Remove member';
+      btnDelete.addEventListener('click', () => {
+        if (confirm(`Are you sure you want to remove ${member.name}? All relationship links involving them will be deleted.`)) {
+          deleteMember(member.id);
+        }
+      });
+      actionBox.appendChild(btnDelete);
+    }
     
     header.appendChild(profile);
     header.appendChild(actionBox);
     detailCard.appendChild(header);
+
+    // Admin Moderation panel
+    if (!member.approved) {
+      const modPanel = document.createElement('div');
+      modPanel.style.display = 'flex';
+      modPanel.style.alignItems = 'center';
+      modPanel.style.justifyContent = 'space-between';
+      modPanel.style.background = 'var(--color-background-secondary)';
+      modPanel.style.padding = '8px 10px';
+      modPanel.style.borderRadius = 'var(--radius-sm)';
+      modPanel.style.border = '0.5px dashed var(--color-border-secondary)';
+      modPanel.style.marginTop = '8px';
+      
+      if (userRole === 'admin') {
+        modPanel.innerHTML = `
+          <span class="moderation-status-badge" style="background-color: var(--color-brand-light); color: var(--color-brand); border: none;">Pending review</span>
+          <div style="display: flex; gap: 6px;">
+            <button id="btnModApprove" class="btn-moderation-approve">✓ Approve</button>
+            <button id="btnModReject" class="btn-moderation-reject">✕ Reject</button>
+          </div>
+        `;
+        detailCard.appendChild(modPanel);
+        
+        // Bind listeners after DOM updates
+        setTimeout(() => {
+          const btnApp = document.getElementById('btnModApprove');
+          const btnRej = document.getElementById('btnModReject');
+          if (btnApp) btnApp.addEventListener('click', () => approveMember(member.id));
+          if (btnRej) btnRej.addEventListener('click', () => {
+            if (confirm(`Reject and delete ${member.name}?`)) rejectMember(member.id);
+          });
+        }, 0);
+      } else {
+        modPanel.innerHTML = `
+          <span class="moderation-status-badge">Pending Admin Approval</span>
+          <span style="font-size: 10px; color: var(--color-text-tertiary);">Temporary entry</span>
+        `;
+        detailCard.appendChild(modPanel);
+      }
+    }
 
     // Dates Grid
     const datesGrid = document.createElement('div');
@@ -727,16 +804,61 @@
           renderAll();
         });
 
-        const btnRemove = document.createElement('button');
-        btnRemove.className = 'btn-remove-connection';
-        btnRemove.innerHTML = '✕';
-        btnRemove.title = 'Remove this connection link';
-        btnRemove.addEventListener('click', () => {
-          deleteRelation(r.id);
-        });
-
         connItem.appendChild(itemLeft);
-        connItem.appendChild(btnRemove);
+
+        const isRelPending = !r.approved;
+        const canRemoveConn = canModifyRelation(r);
+
+        if (isRelPending && userRole === 'admin') {
+          // Admin sees moderation check/cross buttons next to it
+          const btnApprove = document.createElement('button');
+          btnApprove.className = 'btn-remove-connection';
+          btnApprove.innerHTML = '✓';
+          btnApprove.title = 'Approve connection link';
+          btnApprove.style.color = '#1D9E75';
+          btnApprove.style.fontWeight = '700';
+          btnApprove.addEventListener('click', (e) => {
+            e.stopPropagation();
+            approveRelation(r.id);
+          });
+          
+          const btnReject = document.createElement('button');
+          btnReject.className = 'btn-remove-connection';
+          btnReject.innerHTML = '✕';
+          btnReject.title = 'Reject connection link';
+          btnReject.style.color = '#A32D2D';
+          btnReject.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (confirm('Reject and delete this connection link?')) {
+              rejectRelation(r.id);
+            }
+          });
+          
+          const modGrp = document.createElement('div');
+          modGrp.style.display = 'flex';
+          modGrp.style.gap = '2px';
+          modGrp.appendChild(btnApprove);
+          modGrp.appendChild(btnReject);
+          connItem.appendChild(modGrp);
+        } else if (canRemoveConn) {
+          const btnRemove = document.createElement('button');
+          btnRemove.className = 'btn-remove-connection';
+          btnRemove.innerHTML = '✕';
+          btnRemove.title = 'Remove this connection link';
+          btnRemove.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteRelation(r.id);
+          });
+          connItem.appendChild(btnRemove);
+        } else if (isRelPending) {
+          const labelPending = document.createElement('span');
+          labelPending.style.fontSize = '9px';
+          labelPending.style.color = 'var(--color-text-tertiary)';
+          labelPending.style.fontStyle = 'italic';
+          labelPending.textContent = 'pending';
+          connItem.appendChild(labelPending);
+        }
+        
         connList.appendChild(connItem);
       });
 
@@ -758,11 +880,14 @@
     snapshot();
     const gen = data.generation || 0;
     const newId = `id-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const isApproved = (userRole === 'admin');
     const newMember = {
       ...data,
       id: newId,
       x: 300 + Math.random() * 300,
       y: 120 + gen * 185 + Math.random() * 50,
+      approved: isApproved,
+      addedBy: userRole
     };
     members.push(newMember);
     selectedId = newId;
@@ -773,6 +898,11 @@
   }
 
   function saveMember(id, data) {
+    const member = members.find(m => m.id === id);
+    if (!member || !canModifyMember(member)) {
+      showAlert('You do not have permission to modify this member', 'error');
+      return;
+    }
     snapshot();
     const idx = members.findIndex(m => m.id === id);
     if (idx !== -1) {
@@ -786,6 +916,10 @@
 
   function deleteMember(id) {
     const member = members.find(m => m.id === id);
+    if (!member || !canModifyMember(member)) {
+      showAlert('You do not have permission to remove this member', 'error');
+      return;
+    }
     snapshot();
     members = members.filter(m => m.id !== id);
     relationships = relationships.filter(r => r.person1Id !== id && r.person2Id !== id);
@@ -810,11 +944,14 @@
     }
 
     snapshot();
+    const isApproved = (userRole === 'admin');
     const newRel = {
       id: `r-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       person1Id: p1,
       person2Id: p2,
-      type: type
+      type: type,
+      approved: isApproved,
+      addedBy: userRole
     };
     relationships.push(newRel);
     recalculateGenerations();
@@ -824,12 +961,48 @@
   }
 
   function deleteRelation(id) {
+    const rel = relationships.find(r => r.id === id);
+    if (!rel || !canModifyRelation(rel)) {
+      showAlert('You do not have permission to remove this link', 'error');
+      return;
+    }
     snapshot();
     relationships = relationships.filter(r => r.id !== id);
     recalculateGenerations();
     saveToLocalStorage();
     renderAll();
     showAlert('Link removed', 'warning');
+  }
+
+  // Moderation Methods
+  function approveMember(id) {
+    snapshot();
+    const m = members.find(x => x.id === id);
+    if (m) {
+      m.approved = true;
+      saveToLocalStorage();
+      renderAll();
+      showAlert(`${m.name} approved`);
+    }
+  }
+
+  function rejectMember(id) {
+    deleteMember(id);
+  }
+
+  function approveRelation(id) {
+    snapshot();
+    const r = relationships.find(x => x.id === id);
+    if (r) {
+      r.approved = true;
+      saveToLocalStorage();
+      renderAll();
+      showAlert('Link approved');
+    }
+  }
+
+  function rejectRelation(id) {
+    deleteRelation(id);
   }
 
   function handleAutoLayout() {
@@ -1044,8 +1217,9 @@
           const d = JSON.parse(ev.target.result);
           if (Array.isArray(d.members) && Array.isArray(d.relationships)) {
             snapshot();
-            members = d.members;
-            relationships = d.relationships;
+            // Default imported nodes/links to approved/admin if not set
+            members = d.members.map(m => Object.assign({ approved: true, addedBy: 'admin' }, m));
+            relationships = d.relationships.map(r => Object.assign({ approved: true, addedBy: 'admin' }, r));
             selectedId = null;
             recalculateGenerations();
             saveToLocalStorage();
@@ -1199,6 +1373,60 @@
       saveRelation(p1, p2, relationDialogType);
       elRelationDialog.close();
     });
+
+    // Admin Toggle lock button
+    elBtnAdminToggle.addEventListener('click', () => {
+      if (userRole === 'admin') {
+        // Logout
+        userRole = 'member';
+        elRoleBadge.textContent = 'Guest Mode';
+        elRoleBadge.className = 'role-badge guest';
+        elBtnAdminToggle.textContent = '🔒';
+        elBtnAdminToggle.title = 'Unlock Admin Mode';
+        renderAll();
+        showAlert('Logged out of Admin Mode');
+      } else {
+        // Open login
+        elAdminPasswordInput.value = '';
+        elLoginDialog.showModal();
+        elAdminPasswordInput.focus();
+      }
+    });
+
+    // Login modal buttons
+    elBtnLoginDialogClose.addEventListener('click', () => elLoginDialog.close());
+    elBtnLoginCancel.addEventListener('click', () => elLoginDialog.close());
+
+    function handleLoginSubmit() {
+      const pw = elAdminPasswordInput.value ? elAdminPasswordInput.value.trim().toLowerCase() : '';
+      if (pw === 'jalpari') {
+        userRole = 'admin';
+        elRoleBadge.textContent = 'Admin Mode';
+        elRoleBadge.className = 'role-badge admin';
+        elBtnAdminToggle.textContent = '🔓';
+        elBtnAdminToggle.title = 'Lock Admin Mode';
+        elLoginDialog.close();
+        renderAll();
+        showAlert('Admin Mode Unlocked', 'success');
+      } else {
+        showAlert('Incorrect password', 'error');
+        elAdminPasswordInput.focus();
+        elAdminPasswordInput.select();
+      }
+    }
+
+    elBtnLoginSubmit.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleLoginSubmit();
+    });
+    elAdminPasswordInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleLoginSubmit();
+      }
+    });
+
+    registerLightDismissFallback(elLoginDialog);
 
     // Register modern-web-guidance light-dismiss fallback
     registerLightDismissFallback(elMemberDialog);

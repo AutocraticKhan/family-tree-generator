@@ -29,7 +29,10 @@
           <div class="logo-icon" aria-hidden="true">🌳</div>
           <div>
             <h1 class="brand-text">Kinship Explorer</h1>
-            <p class="brand-subtext">Interactive family workspace</p>
+            <div style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+              <span id="roleBadge" class="role-badge guest">Guest Mode</span>
+              <button id="btnAdminToggle" class="btn-admin-toggle" title="Unlock Admin Mode" aria-label="Unlock Admin Mode">🔒</button>
+            </div>
           </div>
         </div>
         <button id="btnAlign" class="btn-align" title="Automatically align all family cards by generation">
@@ -357,6 +360,29 @@
       <div class="dialog-footer">
         <button id="btnRelationDialogCancel" class="btn-dialog-cancel">Cancel</button>
         <button id="btnRelationDialogSave" class="btn-dialog-save">Connect</button>
+      </div>
+    </div>
+  </dialog>
+  
+  <!-- 3. Admin Login Dialog -->
+  <dialog id="loginDialog" closedby="any" aria-labelledby="loginDialogTitle">
+    <div class="dialog-wrapper" style="width: 320px;">
+      <div class="dialog-header">
+        <h2 id="loginDialogTitle" class="dialog-title">Unlock Admin Mode</h2>
+        <button id="btnLoginDialogClose" class="dialog-close-btn" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="dialog-body" style="gap: 10px; padding: 14px;">
+        <p style="font-size: 11px; color: var(--color-text-secondary); line-height: 1.4;">
+          Enter the admin password to approve temporary items and access full deletion/modification controls.
+        </p>
+        <div class="form-group">
+          <label for="adminPasswordInput" class="form-label">Password</label>
+          <input type="password" id="adminPasswordInput" class="form-input-text" placeholder="••••••••">
+        </div>
+      </div>
+      <div class="dialog-footer" style="padding: 10px 14px;">
+        <button id="btnLoginCancel" class="btn-dialog-cancel">Cancel</button>
+        <button id="btnLoginSubmit" class="btn-dialog-save">Unlock</button>
       </div>
     </div>
   </dialog>
