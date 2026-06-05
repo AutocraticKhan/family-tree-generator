@@ -1,0 +1,30 @@
+{
+  "members": [
+    { "id": "1", "name": "Arthur Pendelton", "birthDate": "1942-03-12", "deathDate": "2018-11-05", "gender": "male", "color": 0, "emoji": "👴", "bio": "Patriarch, passionate carpenter, loved jazz.", "generation": 0, "x": 420, "y": 110 },
+    { "id": "2", "name": "Eleanor Vance", "birthDate": "1945-07-22", "deathDate": "", "gender": "female", "color": 3, "emoji": "👵", "bio": "Retired botanist, master gardener, classical pianist.", "generation": 0, "x": 640, "y": 110 },
+    { "id": "3", "name": "Charles Pendelton", "birthDate": "1970-05-15", "deathDate": "", "gender": "male", "color": 5, "emoji": "👨", "bio": "Software architect, high-altitude mountaineer.", "generation": 1, "x": 250, "y": 310 },
+    { "id": "4", "name": "Diana Ross-Pendelton", "birthDate": "1973-09-02", "deathDate": "", "gender": "female", "color": 1, "emoji": "👩", "bio": "Pediatric surgeon, watercolor painter.", "generation": 1, "x": 470, "y": 310 },
+    { "id": "5", "name": "Beatrice Pendelton", "birthDate": "1975-12-10", "deathDate": "", "gender": "female", "color": 0, "emoji": "👩", "bio": "Environmental journalist, documentary filmmaker.", "generation": 1, "x": 760, "y": 310 },
+    { "id": "6", "name": "Julian Mercer", "birthDate": "1972-04-18", "deathDate": "", "gender": "male", "color": 2, "emoji": "👨", "bio": "Chef and owner of \"The Hearth\" bistro.", "generation": 1, "x": 980, "y": 310 },
+    { "id": "7", "name": "Fiona Pendelton", "birthDate": "2001-08-24", "deathDate": "", "gender": "female", "color": 4, "emoji": "👧", "bio": "Graduate student in aerospace engineering.", "generation": 2, "x": 150, "y": 510 },
+    { "id": "8", "name": "Gabriel Pendelton", "birthDate": "2004-11-30", "deathDate": "", "gender": "male", "color": 0, "emoji": "👦", "bio": "Competitive chess player, college freshman.", "generation": 2, "x": 370, "y": 510 },
+    { "id": "9", "name": "Henry Mercer", "birthDate": "2008-01-14", "deathDate": "", "gender": "male", "color": 1, "emoji": "👦", "bio": "Soccer captain, VR enthusiast.", "generation": 2, "x": 860, "y": 510 }
+  ],
+  "relationships": [
+    { "id": "r1", "person1Id": "1", "person2Id": "2", "type": "spouse" },
+    { "id": "r2", "person1Id": "3", "person2Id": "4", "type": "spouse" },
+    { "id": "r3", "person1Id": "5", "person2Id": "6", "type": "spouse" },
+    { "id": "r4", "person1Id": "3", "person2Id": "5", "type": "sibling" },
+    { "id": "r5", "person1Id": "7", "person2Id": "8", "type": "sibling" },
+    { "id": "r6", "person1Id": "1", "person2Id": "3", "type": "parent-child" },
+    { "id": "r7", "person1Id": "2", "person2Id": "3", "type": "parent-child" },
+    { "id": "r8", "person1Id": "1", "person2Id": "5", "type": "parent-child" },
+    { "id": "r9", "person1Id": "2", "person2Id": "5", "type": "parent-child" },
+    { "id": "r10", "person1Id": "3", "person2Id": "7", "type": "parent-child" },
+    { "id": "r11", "person1Id": "4", "person2Id": "7", "type": "parent-child" },
+    { "id": "r12", "person1Id": "3", "person2Id": "8", "type": "parent-child" },
+    { "id": "r13", "person1Id": "4", "person2Id": "8", "type": "parent-child" },
+    { "id": "r14", "person1Id": "5", "person2Id": "9", "type": "parent-child" },
+    { "id": "r15", "person1Id": "6", "person2Id": "9", "type": "parent-child" }
+  ]
+}

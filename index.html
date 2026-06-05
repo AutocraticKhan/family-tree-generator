@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kinship Explorer - Interactive Family Workspace</title>
+  
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="An interactive, premium family tree workspace for visualizing, adding, and organizing family relations with smooth canvas panning, zooming, auto-alignment, and local JSON sync.">
+  
+  <!-- Google Fonts - Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Main Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- ══ SIDEBAR ══ -->
+    <aside class="sidebar" aria-label="Sidebar Control Panel">
+      
+      <!-- Sidebar Header -->
+      <div class="sidebar-header">
+        <div class="brand-info">
+          <div class="logo-icon" aria-hidden="true">🌳</div>
+          <div>
+            <h1 class="brand-text">Kinship Explorer</h1>
+            <p class="brand-subtext">Interactive family workspace</p>
+          </div>
+        </div>
+        <button id="btnAlign" class="btn-align" title="Automatically align all family cards by generation">
+          <span aria-hidden="true">⊞</span> Align
+        </button>
+      </div>
+      
+      <!-- Search Panel -->
+      <div class="search-box">
+        <div class="search-input-wrapper">
+          <span class="search-icon" aria-hidden="true">🔍</span>
+          <input type="search" id="searchInput" class="search-input" placeholder="Search members…" aria-label="Search members by name or bio">
+          <span id="searchClear" class="search-clear" role="button" aria-label="Clear search" tabindex="0">✕</span>
+        </div>
+      </div>
+      
+      <!-- Legend / Filters Panel -->
+      <div class="legend-panel">
+        <div class="legend-title-row">
+          <span>Relationship types</span>
+          <span style="font-size: 9px;">click to toggle</span>
+        </div>
+        
+        <div id="filterSpouse" class="legend-item active" role="checkbox" aria-checked="true" tabindex="0">
+          <div class="legend-line" style="background-color: #D4537E;"></div>
+          <div class="legend-info">
+            <div class="legend-label">Spouse / partner</div>
+            <div class="legend-desc">Married or partnered</div>
+          </div>
+          <div class="legend-toggle-indicator" aria-hidden="true"></div>
+        </div>
+        
+        <div id="filterSibling" class="legend-item active" role="checkbox" aria-checked="true" tabindex="0">
+          <div class="legend-line" style="background-color: #378ADD; stroke-dasharray: 6 4; height: 3px; border-radius: 0; background: repeating-linear-gradient(90deg, #378ADD, #378ADD 6px, transparent 6px, transparent 10px);"></div>
+          <div class="legend-info">
+            <div class="legend-label">Sibling</div>
+            <div class="legend-desc">Shared parents</div>
+          </div>
+          <div class="legend-toggle-indicator" aria-hidden="true"></div>
+        </div>
+        
+        <div id="filterParentChild" class="legend-item active" role="checkbox" aria-checked="true" tabindex="0">
+          <div class="legend-line" style="background-color: #1D9E75;"></div>
+          <div class="legend-info">
+            <div class="legend-label">Parent-child</div>
+            <div class="legend-desc">Direct lineage</div>
+          </div>
+          <div class="legend-toggle-indicator" aria-hidden="true"></div>
+        </div>
+      </div>
+      
+      <!-- Details Drawer -->
+      <div id="detailPanel" class="detail-panel">
+        <!-- Will be dynamically populated by JS. Initial state is empty: -->
+        <div class="empty-detail-state">
+          <div class="empty-detail-avatar" aria-hidden="true">👨‍👩‍👧‍👦</div>
+          <p class="brand-text" style="font-size: 13px; font-weight: 500; color: var(--color-text-secondary);">No member selected</p>
+          <p class="brand-subtext" style="font-size: 12px; line-height: 1.5;">Click any card on the canvas to view details and connections.</p>
+        </div>
+      </div>
+      
+      <!-- Sidebar Footer Actions -->
+      <div class="sidebar-footer">
+        <button id="btnOpenAddMember" class="btn-footer-primary">
+          <span aria-hidden="true">+</span> Add member
+        </button>
+        <button id="btnOpenAddLink" class="btn-footer-secondary">
+          <span aria-hidden="true">🔗</span> Add link
+        </button>
+      </div>
+      
+    </aside>
+    
+    <!-- ══ CANVAS AREA ══ -->
+    <main id="canvasWrapper" class="canvas-wrapper" tabindex="0" aria-label="Interactive family tree canvas">
+      
+      <!-- Status Badge -->
+      <div class="canvas-badge">
+        <span class="canvas-badge-dot" aria-hidden="true"></span>
+        <span>Live canvas · Drag to pan · Scroll to zoom · Drag cards to move</span>
+      </div>
+      
+      <!-- Top Actions (Undo, Export, Import) -->
+      <div class="canvas-controls-top">
+        <button id="btnUndo" class="btn-canvas-control" disabled title="Undo last change (Up to 30 actions)">
+          <span aria-hidden="true">↩</span> Undo
+        </button>
+        <button id="btnExport" class="btn-canvas-control" title="Export current data state as a JSON file">
+          <span aria-hidden="true">⬇</span> Export
+        </button>
+        <label id="btnImportLabel" class="btn-canvas-control btn-file-import-label" title="Import a JSON family tree file">
+          <span aria-hidden="true">⬆</span> Import
+          <input type="file" id="fileImportInput" accept=".json" style="display: none;">
+        </label>
+      </div>
+      
+      <!-- Zoom Actions (Bottom Right) -->
+      <div class="zoom-controls">
+        <div class="zoom-box">
+          <button id="btnZoomIn" class="zoom-btn" title="Zoom in">＋</button>
+          <div id="zoomLevelIndicator" class="zoom-level-text">100%</div>
+          <button id="btnZoomOut" class="zoom-btn" title="Zoom out">－</button>
+          <button id="btnZoomFit" class="zoom-btn zoom-btn-fit" title="Reset view (Fit)">⊞</button>
+        </div>
+      </div>
+      
+      <!-- Viewport Inner (Draggable/Zoomable) -->
+      <div id="canvasViewport" class="canvas-viewport">
+        
+        <!-- SVG Connections Layer -->
+        <svg id="connectionsSvg" class="connections-svg" aria-hidden="true">
+          <!-- Rendered paths will be inserted dynamically by JS -->
+        </svg>
+        
+        <!-- Member Cards Layer -->
+        <div id="nodeCardsContainer" class="node-cards-container">
+          <!-- Member cards will be inserted dynamically by JS -->
+        </div>
+        
+      </div>
+      
+      <!-- Quick Add Panel Overlay -->
+      <div id="quickAddPanel" class="quick-add-panel">
+        <div class="quick-add-header">
+          <span class="quick-add-title">➕ Quick add member</span>
+          <button id="btnQuickAddClose" class="btn-close-panel" aria-label="Close panel">✕</button>
+        </div>
+        <div class="quick-add-body">
+          <div class="form-group">
+            <label for="quickAddName" class="form-label">Full name *</label>
+            <input type="text" id="quickAddName" class="form-input-text" placeholder="e.g. Jane Smith">
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Avatar</label>
+            <div id="quickAddEmojiGrid" class="emoji-picker-grid">
+              <!-- Emojis will be dynamically populated -->
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Color</label>
+            <div id="quickAddColorGrid" class="color-picker-grid">
+              <!-- Color dots will be dynamically populated -->
+            </div>
+          </div>
+          
+          <div class="form-row-2col">
+            <div class="form-group">
+              <label for="quickAddGender" class="form-label">Gender</label>
+              <select id="quickAddGender" class="form-select">
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="quickAddGen" class="form-label">Generation</label>
+              <select id="quickAddGen" class="form-select">
+                <option value="0">Gen 1 (Grandparent)</option>
+                <option value="1" selected>Gen 2 (Parent)</option>
+                <option value="2">Gen 3 (Child)</option>
+                <option value="3">Gen 4 (Grandchild)</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="quickAddBirthY" class="form-label">Birth year (optional)</label>
+            <input type="number" id="quickAddBirthY" class="form-input-text" placeholder="e.g. 1975" min="1800" max="2026">
+          </div>
+        </div>
+        <div class="quick-add-footer">
+          <button id="btnQuickAddSave" class="btn-quick-add-save">+ Add to tree</button>
+          <button id="btnQuickAddMore" class="btn-quick-add-more">More fields</button>
+        </div>
+      </div>
+      
+    </main>
+    
+  </div>
+  
+  <!-- ══ MODALS (NATIVE DIALOGS) ══ -->
+  
+  <!-- 1. Full Add/Edit Member Dialog -->
+  <dialog id="memberDialog" closedby="any" aria-labelledby="memberDialogTitle">
+    <div class="dialog-wrapper">
+      <div class="dialog-header">
+        <h2 id="memberDialogTitle" class="dialog-title">Add new member</h2>
+        <button id="btnMemberDialogClose" class="dialog-close-btn" aria-label="Close dialog">✕</button>
+      </div>
+      
+      <div class="dialog-body">
+        <div class="form-group">
+          <label for="memberDialogName" class="form-label">Full name *</label>
+          <input type="text" id="memberDialogName" class="form-input-text" placeholder="e.g. Eleanor Vance">
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Avatar emoji</label>
+          <div id="memberDialogEmojiGrid" class="emoji-picker-grid">
+            <!-- Emojis will be dynamically populated -->
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Color theme</label>
+          <div id="memberDialogColorGrid" class="color-selector-grid-modal">
+            <!-- Color items will be dynamically populated -->
+          </div>
+        </div>
+        
+        <div class="form-row-2col">
+          <div class="form-group">
+            <label for="memberDialogBirthDate" class="form-label">Birth date</label>
+            <input type="date" id="memberDialogBirthDate" class="form-input-text">
+          </div>
+          <div class="form-group">
+            <label for="memberDialogDeathDate" class="form-label">Death date (if applicable)</label>
+            <input type="date" id="memberDialogDeathDate" class="form-input-text">
+          </div>
+        </div>
+        
+        <div class="form-row-2col">
+          <div class="form-group">
+            <label for="memberDialogGender" class="form-label">Gender</label>
+            <select id="memberDialogGender" class="form-select">
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="memberDialogGen" class="form-label">Generation</label>
+            <select id="memberDialogGen" class="form-select">
+              <option value="0">Gen 1 (Grandparent)</option>
+              <option value="1">Gen 2 (Parent)</option>
+              <option value="2">Gen 3 (Child)</option>
+              <option value="3">Gen 4 (Grandchild)</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="memberDialogBio" class="form-label">Biography / notes</label>
+          <textarea id="memberDialogBio" class="dialog-textarea" placeholder="A short description…" rows="3"></textarea>
+        </div>
+      </div>
+      
+      <div class="dialog-footer">
+        <button id="btnMemberDialogCancel" class="btn-dialog-cancel">Cancel</button>
+        <button id="btnMemberDialogSave" class="btn-dialog-save">Create member</button>
+      </div>
+    </div>
+  </dialog>
+  
+  <!-- 2. Relationship Creator Dialog -->
+  <dialog id="relationDialog" closedby="any" aria-labelledby="relationDialogTitle">
+    <div class="dialog-wrapper">
+      <div class="dialog-header">
+        <h2 id="relationDialogTitle" class="dialog-title">Add relationship link</h2>
+        <button id="btnRelationDialogClose" class="dialog-close-btn" aria-label="Close dialog">✕</button>
+      </div>
+      
+      <div class="dialog-body">
+        <p class="relationship-dialog-help">Connect two members with a relationship type. The connection appears on the canvas.</p>
+        
+        <div class="form-group">
+          <label for="relationDialogP1" class="form-label">First member</label>
+          <select id="relationDialogP1" class="form-select">
+            <option value="">— select —</option>
+            <!-- Member options will be inserted here dynamically -->
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="relationDialogP2" class="form-label">Second member</label>
+          <select id="relationDialogP2" class="form-select">
+            <option value="">— select —</option>
+            <!-- Member options will be inserted here dynamically -->
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Relationship type</label>
+          <div class="rel-type-selector-list">
+            
+            <div id="relOptionSpouse" class="rel-type-option active" role="radio" aria-checked="true" tabindex="0">
+              <div class="rel-option-left">
+                <span class="rel-option-color-bar" style="background-color: #D4537E;"></span>
+                <div class="rel-option-details">
+                  <span class="rel-option-title">Spouse / partner</span>
+                  <span class="rel-option-desc">Married or partnered</span>
+                </div>
+              </div>
+              <input type="radio" name="relTypeRadio" value="spouse" checked style="pointer-events: none;" class="rel-option-radio">
+            </div>
+            
+            <div id="relOptionSibling" class="rel-type-option" role="radio" aria-checked="false" tabindex="0">
+              <div class="rel-option-left">
+                <span class="rel-option-color-bar" style="background-color: #378ADD;"></span>
+                <div class="rel-option-details">
+                  <span class="rel-option-title">Sibling</span>
+                  <span class="rel-option-desc">Shared parents</span>
+                </div>
+              </div>
+              <input type="radio" name="relTypeRadio" value="sibling" style="pointer-events: none;" class="rel-option-radio">
+            </div>
+            
+            <div id="relOptionParentChild" class="rel-type-option" role="radio" aria-checked="false" tabindex="0">
+              <div class="rel-option-left">
+                <span class="rel-option-color-bar" style="background-color: #1D9E75;"></span>
+                <div class="rel-option-details">
+                  <span class="rel-option-title">Parent-child</span>
+                  <span class="rel-option-desc">Direct lineage</span>
+                </div>
+              </div>
+              <input type="radio" name="relTypeRadio" value="parent-child" style="pointer-events: none;" class="rel-option-radio">
+            </div>
+            
+          </div>
+        </div>
+      </div>
+      
+      <div class="dialog-footer">
+        <button id="btnRelationDialogCancel" class="btn-dialog-cancel">Cancel</button>
+        <button id="btnRelationDialogSave" class="btn-dialog-save">Connect</button>
+      </div>
+    </div>
+  </dialog>
+  
+  <!-- ══ ALERT TOAST ══ -->
+  <div id="alertToast" class="alert-toast" role="status" aria-live="polite">
+    <span id="alertToastDot" class="alert-dot"></span>
+    <span id="alertToastText">Message placeholder</span>
+  </div>
+
+  <!-- Main Application Logic Script -->
+  <script src="app.js"></script>
+</body>
+</html>
