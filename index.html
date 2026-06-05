@@ -32,6 +32,36 @@
 </head>
 <body>
 
+  <!-- ══ INVITATION CODE GATE ══ -->
+  <div id="invitationGate" class="invitation-gate" role="dialog" aria-modal="true" aria-labelledby="invitationGateTitle">
+    <div class="invitation-card">
+      <div class="invitation-logo" aria-hidden="true">🌳</div>
+      <h1 id="invitationGateTitle" class="invitation-title">Kinship Explorer</h1>
+      <p class="invitation-subtitle">Private Invitation Required</p>
+      <p class="invitation-desc">This family workspace is private. Please enter your invitation code to continue.</p>
+      <form id="invitationForm" class="invitation-form" autocomplete="off">
+        <div class="invitation-input-group">
+          <span class="invitation-input-icon" aria-hidden="true">🔑</span>
+          <input
+            type="password"
+            id="invitationCodeInput"
+            class="invitation-input"
+            placeholder="Enter invitation code"
+            aria-label="Invitation code"
+            spellcheck="false"
+            autocapitalize="off"
+            required
+          >
+        </div>
+        <button type="submit" id="invitationSubmit" class="invitation-button">
+          Unlock Workspace
+        </button>
+        <div id="invitationError" class="invitation-error" role="alert" aria-live="polite"></div>
+      </form>
+      <div class="invitation-footer-hint">No access without a valid code.</div>
+    </div>
+  </div>
+
   <!-- Mobile Sidebar Backdrop Overlay -->
   <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
 

@@ -176,13 +176,129 @@
   const elBtnLoginCancel = document.getElementById('btnLoginCancel');
   const elBtnLoginSubmit = document.getElementById('btnLoginSubmit');
 
+  // ─── INVITATION CODE GATE ───────────────────────────────────────────────────
+  const INVITATION_CODE = 'tree';
+  const INVITATION_STORAGE_KEY = 'kinship_invitation_verified';
+
+  const elInvitationGate = document.getElementById('invitationGate');
+  const elInvitationForm = document.getElementById('invitationForm');
+  const elInvitationInput = document.getElementById('invitationCodeInput');
+  const elInvitationError = document.getElementById('invitationError');
+  const elInvitationCard = elInvitationGate ? elInvitationGate.querySelector('.invitation-card') : null;
+
+  function isInvitationVerified() {
+    try {
+      return localStorage.getItem(INVITATION_STORAGE_KEY) === 'true';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function setInvitationVerified() {
+    try {
+      localStorage.setItem(INVITATION_STORAGE_KEY, 'true');
+    } catch (e) {
+      // ignore storage errors
+    }
+  }
+
+  function lockApp() {
+    document.body.classList.add('gate-locked');
+  }
+
+  function unlockApp() {
+    document.body.classList.remove('gate-locked');
+  }
+
+  function showInvitationError(message) {
+    if (elInvitationError) elInvitationError.textContent = message;
+    if (elInvitationInput) elInvitationInput.classList.add('has-error');
+    if (elInvitationCard) {
+      elInvitationCard.classList.remove('shake');
+      // Force reflow to restart animation
+      void elInvitationCard.offsetWidth;
+      elInvitationCard.classList.add('shake');
+    }
+  }
+
+  function clearInvitationError() {
+    if (elInvitationError) elInvitationError.textContent = '';
+    if (elInvitationInput) elInvitationInput.classList.remove('has-error');
+  }
+
+  function attemptUnlock() {
+    if (!elInvitationInput) return;
+    const entered = (elInvitationInput.value || '').trim();
+    if (!entered) {
+      showInvitationError('Please enter an invitation code.');
+      elInvitationInput.focus();
+      return;
+    }
+    if (entered.toLowerCase() === INVITATION_CODE.toLowerCase()) {
+      setInvitationVerified();
+      clearInvitationError();
+      elInvitationInput.disabled = true;
+      const submitBtn = document.getElementById('invitationSubmit');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Unlocked ✓';
+      }
+      if (elInvitationGate) elInvitationGate.classList.add('hidden');
+      unlockApp();
+      // Start the actual app after the gate fades out
+      setTimeout(() => {
+        if (elInvitationGate && elInvitationGate.parentNode) {
+          elInvitationGate.parentNode.removeChild(elInvitationGate);
+        }
+        initApp();
+      }, 480);
+    } else {
+      showInvitationError('Invalid invitation code. Access denied.');
+      elInvitationInput.value = '';
+      elInvitationInput.focus();
+    }
+  }
+
+  function setupInvitationGate() {
+    if (!elInvitationGate || !elInvitationForm || !elInvitationInput) return;
+    elInvitationForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      attemptUnlock();
+    });
+    elInvitationInput.addEventListener('input', () => {
+      if (elInvitationInput.classList.contains('has-error')) {
+        clearInvitationError();
+      }
+    });
+    // Lock the app behind the gate initially
+    lockApp();
+    // Auto-focus the input
+    setTimeout(() => {
+      elInvitationInput.focus();
+    }, 100);
+  }
+
   // ─── INITIALIZATION ─────────────────────────────────────────────────────────
-  function init() {
+  function initApp() {
     loadData().then(() => {
       recalculateGenerations();
       setupEventListeners();
       renderAll();
     });
+  }
+
+  function init() {
+    if (isInvitationVerified()) {
+      // Already verified - skip the gate and run the app
+      if (elInvitationGate && elInvitationGate.parentNode) {
+        elInvitationGate.parentNode.removeChild(elInvitationGate);
+      }
+      unlockApp();
+      initApp();
+    } else {
+      // Show the gate and block the app until a valid code is entered
+      setupInvitationGate();
+    }
   }
 
   async function loadData() {
