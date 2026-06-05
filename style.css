@@ -1742,10 +1742,10 @@ dialog[open]::backdrop {
 }
 
 /* ── GLASSMORPHISM & VISUAL POLISH ────────────────────────────────────────── */
-.canvas-badge, 
-.btn-canvas-control, 
-.zoom-box, 
-.quick-add-panel, 
+.canvas-badge,
+.btn-canvas-control,
+.zoom-box,
+.quick-add-panel,
 .btn-toggle-sidebar {
   background-color: rgba(255, 255, 255, 0.75) !important;
   backdrop-filter: blur(12px);
@@ -1755,11 +1755,41 @@ dialog[open]::backdrop {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Light mode: solid white for canvas controls so icons/text are clearly visible */
+:root[data-theme="light"] .btn-canvas-control,
+:root[data-theme="light"] .zoom-box,
+:root[data-theme="light"] .canvas-badge,
+:root[data-theme="light"] .btn-toggle-sidebar {
+  background-color: #ffffff !important;
+  border-color: #e5e7eb !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:root[data-theme="light"] .btn-canvas-control {
+  color: #111827 !important;
+}
+
+:root[data-theme="light"] .zoom-btn {
+  color: #111827 !important;
+}
+
+:root[data-theme="light"] .zoom-level-text {
+  color: #1f2937 !important;
+  background-color: #ffffff !important;
+  border-color: #e5e7eb !important;
+}
+
+:root[data-theme="light"] .theme-toggle-svg {
+  color: #111827 !important;
+}
+
 @media (prefers-color-scheme: dark) {
-  .canvas-badge, 
-  .btn-canvas-control, 
-  .zoom-box, 
-  .quick-add-panel, 
+  .canvas-badge,
+  .btn-canvas-control,
+  .zoom-box,
+  .quick-add-panel,
   .btn-toggle-sidebar {
     background-color: rgba(26, 26, 30, 0.75) !important;
     border: 0.5px solid rgba(255, 255, 255, 0.06) !important;
