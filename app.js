@@ -71,6 +71,12 @@
   let draggedNodeId = null;
   let nodeDragOffset = { x: 0, y: 0 };
   let hasDragged = false;
+
+  // Touch / Pointer Gesture states
+  let activePointers = [];
+  let initialTouchDistance = 0;
+  let initialZoom = 1;
+  let initialCenter = { x: 0, y: 0 };
   
   // Alert timeouts
   let alertTimeout = null;
@@ -100,6 +106,11 @@
   const elCanvasViewport = document.getElementById('canvasViewport');
   const elConnectionsSvg = document.getElementById('connectionsSvg');
   const elNodeCardsContainer = document.getElementById('nodeCardsContainer');
+  
+  // Responsive UI elements
+  const elSidebar = document.querySelector('.sidebar');
+  const elBtnToggleSidebar = document.getElementById('btnToggleSidebar');
+  const elSidebarBackdrop = document.getElementById('sidebarBackdrop');
   
   const elBtnUndo = document.getElementById('btnUndo');
   const elBtnExport = document.getElementById('btnExport');
@@ -691,10 +702,13 @@
     // 5. Render details panel
     renderDetailsPanel();
 
-    // 6. Update Legend items classes
+    // 6. Update Legend items classes and ARIA states
     elFilterSpouse.className = `legend-item ${relFilters.spouse ? 'active' : ''}`;
+    elFilterSpouse.setAttribute('aria-checked', relFilters.spouse ? 'true' : 'false');
     elFilterSibling.className = `legend-item ${relFilters.sibling ? 'active' : ''}`;
-    elFilterParentChild.className = `legend-item ${relFilters.parentChild ? 'active' : ''}`;
+    elFilterSibling.setAttribute('aria-checked', relFilters.sibling ? 'true' : 'false');
+    elFilterParentChild.className = `legend-item ${relFilters['parent-child'] ? 'active' : ''}`;
+    elFilterParentChild.setAttribute('aria-checked', relFilters['parent-child'] ? 'true' : 'false');
 
     // 7. Update Admin Import Visibility
     if (userRole === 'admin') {
@@ -845,18 +859,20 @@
       card.appendChild(footer);
 
       // Card Events
-      card.addEventListener('mousedown', (e) => {
+      card.addEventListener('pointerdown', (e) => {
         if (e.target.closest('button')) return; // Ignore button clicks
         e.stopPropagation();
-        e.preventDefault();
+        
+        // Only drag with left click or touch
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         
         draggedNodeId = m.id;
         hasDragged = false;
 
         const rect = elCanvasWrapper.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left - pan.x) / zoom;
-        const mouseY = (e.clientY - rect.top - pan.y) / zoom;
-        nodeDragOffset = { x: mouseX - m.x, y: mouseY - m.y };
+        const pointerX = (e.clientX - rect.left - pan.x) / zoom;
+        const pointerY = (e.clientY - rect.top - pan.y) / zoom;
+        nodeDragOffset = { x: pointerX - m.x, y: pointerY - m.y };
       });
 
       card.addEventListener('click', (e) => {
@@ -956,6 +972,17 @@
       });
       actionBox.appendChild(btnDelete);
     }
+    
+    // Close selection button (always available)
+    const btnClose = document.createElement('button');
+    btnClose.className = 'btn-detail-action';
+    btnClose.innerHTML = '✕';
+    btnClose.title = 'Clear selection';
+    btnClose.addEventListener('click', () => {
+      selectedId = null;
+      renderAll();
+    });
+    actionBox.appendChild(btnClose);
     
     header.appendChild(profile);
     header.appendChild(actionBox);
@@ -1323,6 +1350,10 @@
     showAlert('Tree exported');
   }
 
+  function getDistance(p1, p2) {
+    return Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+  }
+
   // ─── EVENT LISTENERS ────────────────────────────────────────────────────────
   function setupEventListeners() {
     // 1. Auto align
@@ -1391,24 +1422,67 @@
       openRelationModal(selectedId);
     });
 
-    // 5. Canvas mouse controls (Dragging & panning)
-    elCanvasWrapper.addEventListener('mousedown', (e) => {
-      // Ignore click if it's on a card or panel
-      if (e.target.closest('.node-card') || e.target.closest('[data-panel]') || e.target.closest('#quickAddPanel')) return;
-      isDraggingCanvas = true;
-      canvasDragStart = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-      elCanvasWrapper.style.cursor = 'grabbing';
+    // 5. Canvas pointer controls (Dragging, panning & pinch-to-zoom)
+    elCanvasWrapper.addEventListener('pointerdown', (e) => {
+      // Ignore click if it's on a card or panel overlay controls
+      if (
+        e.target.closest('.node-card') || 
+        e.target.closest('[data-panel]') || 
+        e.target.closest('#quickAddPanel') || 
+        e.target.closest('.btn-toggle-sidebar') ||
+        e.target.closest('.canvas-controls-top') ||
+        e.target.closest('.zoom-controls') ||
+        e.target.closest('.canvas-badge')
+      ) return;
+      
+      // Prevent capturing non-left clicks for mouse
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+      // Add to tracked pointers list
+      activePointers.push({
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY
+      });
+      
+      if (activePointers.length === 1) {
+        isDraggingCanvas = true;
+        canvasDragStart = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+        elCanvasWrapper.style.cursor = 'grabbing';
+        try { elCanvasWrapper.setPointerCapture(e.pointerId); } catch(err) {}
+      } else if (activePointers.length === 2) {
+        // Switch to pinch-to-zoom
+        isDraggingCanvas = false;
+        initialTouchDistance = getDistance(activePointers[0], activePointers[1]);
+        initialZoom = zoom;
+        
+        // Find screen midpoint of fingers
+        const midX = (activePointers[0].clientX + activePointers[1].clientX) / 2;
+        const midY = (activePointers[0].clientY + activePointers[1].clientY) / 2;
+        const rect = elCanvasWrapper.getBoundingClientRect();
+        initialCenter = {
+          x: midX - rect.left,
+          y: midY - rect.top
+        };
+      }
     });
 
-    window.addEventListener('mousemove', (e) => {
-      if (isDraggingCanvas) {
+    window.addEventListener('pointermove', (e) => {
+      // Update pointer position in activePointers
+      const idx = activePointers.findIndex(p => p.pointerId === e.pointerId);
+      if (idx !== -1) {
+        activePointers[idx].clientX = e.clientX;
+        activePointers[idx].clientY = e.clientY;
+      }
+      
+      if (isDraggingCanvas && activePointers.length === 1) {
         pan.x = e.clientX - canvasDragStart.x;
         pan.y = e.clientY - canvasDragStart.y;
         renderAll();
       } else if (draggedNodeId) {
         const rect = elCanvasWrapper.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left - pan.x) / zoom;
-        const mouseY = (e.clientY - rect.top - pan.y) / zoom;
+        const pointerX = (e.clientX - rect.left - pan.x) / zoom;
+        const pointerY = (e.clientY - rect.top - pan.y) / zoom;
         
         const m = members.find(x => x.id === draggedNodeId);
         if (m) {
@@ -1416,27 +1490,67 @@
             snapshot();
             hasDragged = true;
           }
-          m.x = Math.round(mouseX - nodeDragOffset.x);
-          m.y = Math.round(mouseY - nodeDragOffset.y);
+          m.x = Math.round(pointerX - nodeDragOffset.x);
+          m.y = Math.round(pointerY - nodeDragOffset.y);
+          renderAll();
+        }
+      } else if (activePointers.length === 2) {
+        const currentDist = getDistance(activePointers[0], activePointers[1]);
+        if (initialTouchDistance > 0 && currentDist > 0) {
+          const ratio = currentDist / initialTouchDistance;
+          const newZoom = Math.max(0.3, Math.min(2.5, initialZoom * ratio));
+          
+          // Calculate Zoom around initialCenter
+          const canvasX = (initialCenter.x - pan.x) / zoom;
+          const canvasY = (initialCenter.y - pan.y) / zoom;
+          
+          zoom = newZoom;
+          pan.x = initialCenter.x - canvasX * zoom;
+          pan.y = initialCenter.y - canvasY * zoom;
+          
           renderAll();
         }
       }
     });
 
-    window.addEventListener('mouseup', () => {
-      if (isDraggingCanvas) {
+    const handlePointerUp = (e) => {
+      activePointers = activePointers.filter(p => p.pointerId !== e.pointerId);
+      
+      if (isDraggingCanvas && activePointers.length === 0) {
         isDraggingCanvas = false;
         elCanvasWrapper.style.cursor = 'grab';
+        try { elCanvasWrapper.releasePointerCapture(e.pointerId); } catch(err) {}
       }
+      
       if (draggedNodeId) {
         draggedNodeId = null;
         saveToLocalStorage();
       }
-    });
+      
+      if (activePointers.length < 2) {
+        initialTouchDistance = 0;
+      }
+      
+      // If we still have 1 finger, transition back to panning
+      if (activePointers.length === 1 && !draggedNodeId) {
+        isDraggingCanvas = true;
+        canvasDragStart = { x: activePointers[0].clientX - pan.x, y: activePointers[0].clientY - pan.y };
+      }
+    };
+
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
 
     // Canvas click outside node clears selection
     elCanvasWrapper.addEventListener('click', (e) => {
-      if (e.target.closest('.node-card') || e.target.closest('[data-panel]') || e.target.closest('#quickAddPanel')) return;
+      if (
+        e.target.closest('.node-card') || 
+        e.target.closest('[data-panel]') || 
+        e.target.closest('#quickAddPanel') || 
+        e.target.closest('.btn-toggle-sidebar') ||
+        e.target.closest('.canvas-controls-top') ||
+        e.target.closest('.zoom-controls')
+      ) return;
       if (selectedId !== null) {
         selectedId = null;
         renderAll();
@@ -1477,6 +1591,18 @@
       pan = { x: 80, y: 60 };
       renderAll();
     });
+
+    // Sidebar toggle for mobile responsive layouts
+    if (elBtnToggleSidebar && elSidebarBackdrop && elSidebar) {
+      elBtnToggleSidebar.addEventListener('click', () => {
+        elSidebar.classList.toggle('mobile-open');
+        elSidebarBackdrop.classList.toggle('visible');
+      });
+      elSidebarBackdrop.addEventListener('click', () => {
+        elSidebar.classList.remove('mobile-open');
+        elSidebarBackdrop.classList.remove('visible');
+      });
+    }
 
     // 8. Undo, Export, Import
     elBtnUndo.addEventListener('click', doUndo);

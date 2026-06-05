@@ -18,6 +18,9 @@
 </head>
 <body>
 
+  <!-- Mobile Sidebar Backdrop Overlay -->
+  <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
+
   <div class="app-container">
     
     <!-- ══ SIDEBAR ══ -->
@@ -35,9 +38,6 @@
             </div>
           </div>
         </div>
-        <button id="btnAlign" class="btn-align" title="Automatically align all family cards by generation">
-          <span aria-hidden="true">⊞</span> Align
-        </button>
       </div>
       
       <!-- Search Panel -->
@@ -109,16 +109,24 @@
     <!-- ══ CANVAS AREA ══ -->
     <main id="canvasWrapper" class="canvas-wrapper" tabindex="0" aria-label="Interactive family tree canvas">
       
+      <!-- Mobile Sidebar Toggle -->
+      <button id="btnToggleSidebar" class="btn-toggle-sidebar" title="Toggle control panel" aria-label="Toggle control panel">
+        <span>☰</span>
+      </button>
+
       <!-- Status Badge -->
       <div class="canvas-badge">
         <span class="canvas-badge-dot" aria-hidden="true"></span>
         <span>Live canvas · Drag to pan · Scroll to zoom · Drag cards to move</span>
       </div>
       
-      <!-- Top Actions (Undo, Export, Import) -->
+      <!-- Top Actions (Undo, Align, Export, Import) -->
       <div class="canvas-controls-top">
         <button id="btnUndo" class="btn-canvas-control" disabled title="Undo last change (Up to 30 actions)">
           <span aria-hidden="true">↩</span> Undo
+        </button>
+        <button id="btnAlign" class="btn-canvas-control" title="Automatically align all family cards by generation">
+          <span aria-hidden="true">⊞</span> Align
         </button>
         <button id="btnExport" class="btn-canvas-control" title="Export current data state as a JSON file">
           <span aria-hidden="true">⬇</span> Export
