@@ -104,6 +104,7 @@
   const elBtnUndo = document.getElementById('btnUndo');
   const elBtnExport = document.getElementById('btnExport');
   const elFileImportInput = document.getElementById('fileImportInput');
+  const elBtnImportLabel = document.getElementById('btnImportLabel');
   
   const elBtnZoomIn = document.getElementById('btnZoomIn');
   const elBtnZoomOut = document.getElementById('btnZoomOut');
@@ -354,6 +355,273 @@
     });
   }
 
+  // ─── PICKER RENDERERS ───────────────────────────────────────────────────────
+  function renderEmojiPicker(container, selectedEmoji, onClickCallback) {
+    container.innerHTML = '';
+    EMOJIS.forEach(emoji => {
+      const item = document.createElement('div');
+      item.className = `emoji-picker-item ${emoji === selectedEmoji ? 'active' : ''}`;
+      item.textContent = emoji;
+      item.setAttribute('role', 'button');
+      item.setAttribute('tabindex', '0');
+      item.addEventListener('click', () => {
+        container.querySelectorAll('.emoji-picker-item').forEach(el => el.classList.remove('active'));
+        item.classList.add('active');
+        onClickCallback(emoji);
+      });
+      item.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          item.click();
+        }
+      });
+      container.appendChild(item);
+    });
+  }
+
+  function renderColorPicker(container, selectedColorIdx, onClickCallback) {
+    container.innerHTML = '';
+    COLORS.forEach((color, idx) => {
+      const dot = document.createElement('div');
+      dot.className = `color-picker-dot ${idx === selectedColorIdx ? 'active' : ''}`;
+      dot.style.backgroundColor = color.bg;
+      dot.setAttribute('role', 'button');
+      dot.setAttribute('tabindex', '0');
+      dot.title = color.name;
+      dot.addEventListener('click', () => {
+        container.querySelectorAll('.color-picker-dot').forEach(el => el.classList.remove('active'));
+        dot.classList.add('active');
+        onClickCallback(idx);
+      });
+      dot.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          dot.click();
+        }
+      });
+      container.appendChild(dot);
+    });
+  }
+
+  function renderModalColorPicker(container, selectedColorIdx, onClickCallback) {
+    container.innerHTML = '';
+    COLORS.forEach((color, idx) => {
+      const item = document.createElement('div');
+      item.className = `color-selector-item-modal ${idx === selectedColorIdx ? 'active' : ''}`;
+      item.setAttribute('role', 'button');
+      item.setAttribute('tabindex', '0');
+      item.title = color.name;
+      
+      const dot = document.createElement('span');
+      dot.className = 'color-selector-dot-modal';
+      dot.style.backgroundColor = color.bg;
+      
+      const label = document.createElement('span');
+      label.textContent = color.name;
+      
+      item.appendChild(dot);
+      item.appendChild(label);
+      item.addEventListener('click', () => {
+        container.querySelectorAll('.color-selector-item-modal').forEach(el => el.classList.remove('active'));
+        item.classList.add('active');
+        onClickCallback(idx);
+      });
+      item.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          item.click();
+        }
+      });
+      container.appendChild(item);
+    });
+  }
+
+  // ─── KINSHIP HELPERS ────────────────────────────────────────────────────────
+  function getParents(personId) {
+    return relationships
+      .filter(r => r.type === 'parent-child' && r.person2Id === personId)
+      .map(r => r.person1Id);
+  }
+
+  function getChildren(personId) {
+    return relationships
+      .filter(r => r.type === 'parent-child' && r.person1Id === personId)
+      .map(r => r.person2Id);
+  }
+
+  function getCurrentSpouses(personId) {
+    return relationships
+      .filter(r => r.type === 'spouse' && (r.person1Id === personId || r.person2Id === personId))
+      .map(r => r.person1Id === personId ? r.person2Id : r.person1Id);
+  }
+
+  function getPastSpouses(personId) {
+    const currentSpouses = getCurrentSpouses(personId);
+    const children = getChildren(personId);
+    const pastSpouses = new Set();
+    
+    children.forEach(childId => {
+      getParents(childId).forEach(pId => {
+        if (pId !== personId && !currentSpouses.includes(pId)) {
+          pastSpouses.add(pId);
+        }
+      });
+    });
+    return Array.from(pastSpouses);
+  }
+
+  function getEverSpouses(personId) {
+    const current = getCurrentSpouses(personId);
+    const past = getPastSpouses(personId);
+    return Array.from(new Set([...current, ...past]));
+  }
+
+  function getAncestors(personId) {
+    const ancestors = new Set();
+    const queue = [personId];
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      getParents(curr).forEach(pId => {
+        if (!ancestors.has(pId)) {
+          ancestors.add(pId);
+          queue.push(pId);
+        }
+      });
+    }
+    return Array.from(ancestors);
+  }
+
+  function getDescendants(personId) {
+    const descendants = new Set();
+    const queue = [personId];
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      getChildren(curr).forEach(cId => {
+        if (!descendants.has(cId)) {
+          descendants.add(cId);
+          queue.push(cId);
+        }
+      });
+    }
+    return Array.from(descendants);
+  }
+
+  function areSiblings(p1Id, p2Id) {
+    if (p1Id === p2Id) return false;
+    const hasSharedParent = getParents(p1Id).some(p => getParents(p2Id).includes(p));
+    if (hasSharedParent) return true;
+
+    const explicitSib = relationships.some(r => 
+      r.type === 'sibling' && ((r.person1Id === p1Id && r.person2Id === p2Id) || (r.person1Id === p2Id && r.person2Id === p1Id))
+    );
+    if (explicitSib) return true;
+
+    const parents1 = getParents(p1Id);
+    const parents2 = getParents(p2Id);
+    for (const p1 of parents1) {
+      for (const p2 of parents2) {
+        if (getEverSpouses(p1).includes(p2)) return true;
+      }
+    }
+    return false;
+  }
+
+  function isSiblingOfAncestor(personId, candidateId) {
+    return getAncestors(personId).some(ancId => areSiblings(ancId, candidateId));
+  }
+
+  function isNephewNiece(personId, candidateId) {
+    const siblings = members.filter(m => areSiblings(personId, m.id)).map(m => m.id);
+    return siblings.some(sibId => getDescendants(sibId).includes(candidateId));
+  }
+
+  // In-laws
+  function isParentOfSpouse(personId, candidateId) {
+    return getEverSpouses(personId).some(spouseId => getParents(spouseId).includes(candidateId));
+  }
+
+  function isStepchild(personId, candidateId) {
+    return getEverSpouses(personId).some(spouseId => {
+      const isChildOfSpouse = getChildren(spouseId).includes(candidateId);
+      const isOwnChild = getParents(candidateId).includes(personId);
+      return isChildOfSpouse && !isOwnChild;
+    });
+  }
+
+  function wasSpouseOfAncestorOrDescendant(personId, candidateId) {
+    const person = members.find(m => m.id === personId);
+    if (!person || person.gender !== 'male') return false;
+    const relatives = [...getAncestors(personId), ...getDescendants(personId)];
+    return relatives.some(relId => getEverSpouses(relId).includes(candidateId));
+  }
+
+  function isSpouseOfDescendant(personId, candidateId) {
+    return getDescendants(personId).some(descId => getEverSpouses(descId).includes(candidateId));
+  }
+
+  // Simultaneous rules for men
+  function isSiblingOfExistingSpouse(personId, candidateId) {
+    const person = members.find(m => m.id === personId);
+    if (!person || person.gender !== 'male') return false;
+    return getCurrentSpouses(personId).some(spouseId => areSiblings(spouseId, candidateId));
+  }
+
+  function isAuntOrNieceOfExistingSpouse(personId, candidateId) {
+    const person = members.find(m => m.id === personId);
+    if (!person || person.gender !== 'male') return false;
+    return getCurrentSpouses(personId).some(spouseId => 
+      isSiblingOfAncestor(spouseId, candidateId) || isNephewNiece(spouseId, candidateId)
+    );
+  }
+
+  function getGrandparents(personId) {
+    const grandparents = new Set();
+    getParents(personId).forEach(pId => {
+      getParents(pId).forEach(gId => grandparents.add(gId));
+    });
+    return Array.from(grandparents);
+  }
+
+  function areFirstCousins(personId, candidateId) {
+    if (personId === candidateId || areSiblings(personId, candidateId)) return false;
+    if (getAncestors(personId).includes(candidateId) || getDescendants(personId).includes(candidateId)) return false;
+    const gp1 = getGrandparents(personId);
+    const gp2 = getGrandparents(candidateId);
+    return gp1.some(g => gp2.includes(g));
+  }
+
+  function checkSpouseBlock(personId, candidateId) {
+    const person = members.find(m => m.id === personId);
+    const candidate = members.find(m => m.id === candidateId);
+    if (!person || !candidate) return { blocked: false };
+
+    // Status checks
+    if (person.id === candidate.id) return { blocked: true, reason: 'Self-selection' };
+    if (person.gender === candidate.gender) return { blocked: true, reason: 'Same gender' };
+    if (getCurrentSpouses(person.id).includes(candidate.id)) return { blocked: true, reason: 'Already married' };
+    if (candidate.gender === 'female' && getCurrentSpouses(candidate.id).length > 0) return { blocked: true, reason: 'Candidate wife already married' };
+    if (person.gender === 'male' && getCurrentSpouses(person.id).length >= 4) return { blocked: true, reason: 'Husband exceeds 4 wives limit' };
+
+    // Blood relatives (mahram)
+    if (getAncestors(person.id).includes(candidate.id)) return { blocked: true, reason: 'Ancestor (parent/grandparent)' };
+    if (getDescendants(person.id).includes(candidate.id)) return { blocked: true, reason: 'Descendant (child/grandchild)' };
+    if (areSiblings(person.id, candidate.id)) return { blocked: true, reason: 'Sibling (full/half/step)' };
+    if (isSiblingOfAncestor(person.id, candidate.id)) return { blocked: true, reason: 'Aunt / Uncle' };
+    if (isNephewNiece(person.id, candidate.id)) return { blocked: true, reason: 'Nephew / Niece' };
+
+    // In-law relations
+    if (isParentOfSpouse(person.id, candidate.id)) return { blocked: true, reason: 'Parent-in-law' };
+    if (isStepchild(person.id, candidate.id)) return { blocked: true, reason: 'Stepchild' };
+    if (wasSpouseOfAncestorOrDescendant(person.id, candidate.id)) return { blocked: true, reason: "Spouse's ex-wife" };
+    if (isSpouseOfDescendant(person.id, candidate.id)) return { blocked: true, reason: 'Daughter-in-law' };
+
+    // Simultaneous restrictions
+    if (isSiblingOfExistingSpouse(person.id, candidate.id)) return { blocked: true, reason: 'Sibling of existing wife' };
+    if (isAuntOrNieceOfExistingSpouse(person.id, candidate.id)) return { blocked: true, reason: 'Aunt/Niece of existing wife' };
+
+    return { blocked: false };
+  }
+
   function snapshot() {
     historyStack.push({
       members: JSON.parse(JSON.stringify(members)),
@@ -427,6 +695,13 @@
     elFilterSpouse.className = `legend-item ${relFilters.spouse ? 'active' : ''}`;
     elFilterSibling.className = `legend-item ${relFilters.sibling ? 'active' : ''}`;
     elFilterParentChild.className = `legend-item ${relFilters.parentChild ? 'active' : ''}`;
+
+    // 7. Update Admin Import Visibility
+    if (userRole === 'admin') {
+      elBtnImportLabel.style.display = 'flex';
+    } else {
+      elBtnImportLabel.style.display = 'none';
+    }
   }
 
   function renderConnections() {
@@ -1208,6 +1483,11 @@
     elBtnExport.addEventListener('click', handleExport);
     
     elFileImportInput.addEventListener('change', (e) => {
+      if (userRole !== 'admin') {
+        showAlert('Only admins can import data', 'error');
+        e.target.value = '';
+        return;
+      }
       const file = e.target.files[0];
       if (!file) return;
       
@@ -1325,6 +1605,8 @@
       elMemberDialog.close();
     });
 
+    elRelationDialogP1.addEventListener('change', updateRelationDialogP2);
+
     // Relation Dialog Radio Select
     const radioOptions = [
       { el: elRelOptionSpouse, val: 'spouse' },
@@ -1345,6 +1627,8 @@
         
         const radio = opt.el.querySelector('.rel-option-radio');
         if (radio) radio.checked = true;
+
+        updateRelationDialogP2();
       });
 
       // Accessibility keybindings
@@ -1368,6 +1652,14 @@
       if (p1 === p2) {
         showAlert('Cannot connect a member to themselves', 'error');
         return;
+      }
+
+      if (relationDialogType === 'spouse') {
+        const check = checkSpouseBlock(p1, p2);
+        if (check.blocked) {
+          showAlert(`Cannot link: ${check.reason}`, 'error');
+          return;
+        }
       }
 
       saveRelation(p1, p2, relationDialogType);
@@ -1477,6 +1769,47 @@
     elMemberDialog.showModal();
   }
 
+  function updateRelationDialogP2() {
+    const p1Id = elRelationDialogP1.value;
+    const selectedP2Val = elRelationDialogP2.value;
+    
+    elRelationDialogP2.innerHTML = '<option value="">— select —</option>';
+    
+    if (!p1Id) {
+      const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+      sortedMembers.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.name;
+        if (m.id === selectedP2Val) opt.selected = true;
+        elRelationDialogP2.appendChild(opt);
+      });
+      return;
+    }
+    
+    const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+    sortedMembers.forEach(m => {
+      if (m.id === p1Id) return;
+      
+      if (relationDialogType === 'spouse') {
+        const check = checkSpouseBlock(p1Id, m.id);
+        if (check.blocked) return;
+      }
+      
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      
+      let suffix = '';
+      if (relationDialogType === 'spouse' && areFirstCousins(p1Id, m.id)) {
+        suffix = ' (first cousin)';
+      }
+      opt.textContent = m.name + suffix;
+      
+      if (m.id === selectedP2Val) opt.selected = true;
+      elRelationDialogP2.appendChild(opt);
+    });
+  }
+
   function openRelationModal(presetP1Id) {
     elRelationDialogP1.innerHTML = '<option value="">— select —</option>';
     elRelationDialogP2.innerHTML = '<option value="">— select —</option>';
@@ -1490,11 +1823,6 @@
       opt1.textContent = m.name;
       if (m.id === presetP1Id) opt1.selected = true;
       elRelationDialogP1.appendChild(opt1);
-
-      const opt2 = document.createElement('option');
-      opt2.value = m.id;
-      opt2.textContent = m.name;
-      elRelationDialogP2.appendChild(opt2);
     });
 
     // Reset relation selection
