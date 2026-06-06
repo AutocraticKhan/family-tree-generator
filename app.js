@@ -484,7 +484,25 @@
   }
 
   async function loadData() {
-    // 1. Try local storage (CSV format)
+    // 1. Try the server API first (live CSV files on disk)
+    try {
+      const [memRes, relRes] = await Promise.all([
+        fetch('/api/members'),
+        fetch('/api/relationships')
+      ]);
+      if (memRes.ok && relRes.ok) {
+        const memText = await memRes.text();
+        const relText = await relRes.text();
+        members = csvToMembers(memText);
+        relationships = csvToRelationships(relText);
+        saveToLocalStorage();
+        return;
+      }
+    } catch (e) {
+      console.warn('Server API not available, trying alternative sources.', e);
+    }
+
+    // 2. Try local storage (CSV format)
     try {
       const storedMembers = localStorage.getItem('family_tree_members_csv');
       const storedRels = localStorage.getItem('family_tree_relationships_csv');
@@ -497,7 +515,7 @@
       console.warn('Failed parsing local storage CSV data', e);
     }
 
-    // 2. Try fetching members.csv and relationships.csv
+    // 3. Try fetching members.csv and relationships.csv directly (static files)
     try {
       const [memRes, relRes] = await Promise.all([
         fetch('members.csv'),
@@ -515,7 +533,7 @@
       console.warn('Failed fetching CSV files (often due to local file:// CORS policies). Falling back to internal data.', e);
     }
 
-    // 3. Fallback to default copy (round-tripped through CSV to keep in-memory shape consistent)
+    // 4. Fallback to default copy (round-tripped through CSV to keep in-memory shape consistent)
     const defaultMemCsv = membersToCsv(DEFAULT_DATA.members.map(m => Object.assign({ approved: true, addedBy: 'admin' }, m)));
     const defaultRelCsv = relationshipsToCsv(DEFAULT_DATA.relationships.map(r => Object.assign({ approved: true, addedBy: 'admin' }, r)));
     members = csvToMembers(defaultMemCsv);
@@ -534,6 +552,26 @@
     } catch (e) {
       console.warn('Failed to save to localStorage', e);
     }
+
+    // Live-sync CSV files on disk via the server API
+    syncCsvToDisk();
+  }
+
+  function syncCsvToDisk() {
+    const memCsv = membersToCsv(members);
+    const relCsv = relationshipsToCsv(relationships);
+
+    fetch('/api/members', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/csv' },
+      body: memCsv
+    }).catch(() => { /* server not available, ignore */ });
+
+    fetch('/api/relationships', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/csv' },
+      body: relCsv
+    }).catch(() => { /* server not available, ignore */ });
   }
 
   // ─── HELPERS ────────────────────────────────────────────────────────────────
