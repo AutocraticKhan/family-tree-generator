@@ -127,8 +127,18 @@
       return null;
     }
     try {
-      const { data: updated, error } = await supabase.from('members').update(data).eq('id', id).select();
+      const { data: updated, error, count } = await supabase
+        .from('members')
+        .update(data, { count: 'exact' })
+        .eq('id', id)
+        .select();
       if (error) throw error;
+      // count === 0 means RLS silently rejected the UPDATE (no rows matched
+      // under the policy). Surface a clear error so the caller can show the
+      // user something actionable instead of pretending it succeeded.
+      if (count === 0) {
+        throw new Error('Update blocked by RLS — run fix_rls_policies.sql in Supabase');
+      }
       return (updated && updated.length > 0) ? updated[0] : null;
     } catch (err) {
       handleSupabaseError(err);
@@ -150,8 +160,17 @@
       if (relErr) throw relErr;
       console.log(`🗑️ dbDeleteMember: relationships involving ${id} deleted`);
 
-      const { error, count } = await supabase.from('members').delete().eq('id', id);
+      const { error, count } = await supabase
+        .from('members')
+        .delete({ count: 'exact' })
+        .eq('id', id);
       if (error) throw error;
+      // count === 0 means RLS silently rejected the DELETE — surface a clear
+      // error so the caller can show the user a hint instead of pretending
+      // it worked (which would cause the member to "reappear" on refresh).
+      if (count === 0) {
+        throw new Error('Delete blocked by RLS — run fix_rls_policies.sql in Supabase');
+      }
       console.log(`🗑️ dbDeleteMember: member ${id} deleted (${count !== null ? count : 'unknown'} rows)`);
       return true;
     } catch (err) {
@@ -182,8 +201,15 @@
       return null;
     }
     try {
-      const { data: updated, error } = await supabase.from('relationships').update(data).eq('id', id).select();
+      const { data: updated, error, count } = await supabase
+        .from('relationships')
+        .update(data, { count: 'exact' })
+        .eq('id', id)
+        .select();
       if (error) throw error;
+      if (count === 0) {
+        throw new Error('Update blocked by RLS — run fix_rls_policies.sql in Supabase');
+      }
       return (updated && updated.length > 0) ? updated[0] : null;
     } catch (err) {
       handleSupabaseError(err);
@@ -197,11 +223,26 @@
       return null;
     }
     try {
-      const { error, count } = await supabase.from('relationships').delete().eq('id', id);
+      const { error, count } = await supabase
+        .from('relationships')
+        .delete({ count: 'exact' })
+        .eq('id', id);
       if (error) throw error;
+      // 0 rows deleted could mean: (a) the row didn't exist (stale JS state)
+      // or (b) RLS blocked the DELETE. To distinguish, also check that the
+      // relationship actually existed; if it did and 0 rows were affected
+      // we treat it as an RLS failure.
+      if (count === 0) {
+        const { data: existing, error: selErr } = await supabase
+          .from('relationships')
+          .select('id')
+          .eq('id', id);
+        if (selErr) throw selErr;
+        if (existing && existing.length > 0) {
+          throw new Error('Delete blocked by RLS — run fix_rls_policies.sql in Supabase');
+        }
+      }
       console.log(`🗑️ dbDeleteRelationship: ${id} — ${count !== null ? count : 'unknown'} rows deleted`);
-      // If count is 0 (no rows matched), it means the ID doesn't exist in the DB
-      // but we still return true so the local state gets cleaned up
       return true;
     } catch (err) {
       console.error('🗑️ dbDeleteRelationship FAILED:', err);
@@ -546,6 +587,7 @@
   // ─── INVITATION CODE GATE ───────────────────────────────────────────────────
   const INVITATION_CODE = 'tree';
   const INVITATION_STORAGE_KEY = 'kinship_invitation_verified';
+  const ROLE_STORAGE_KEY = 'kinship_user_role';
 
   const elInvitationGate = document.getElementById('invitationGate');
   const elInvitationForm = document.getElementById('invitationForm');
@@ -654,7 +696,33 @@
     });
   }
 
+  // Restore admin role from sessionStorage on page load so admins don't
+  // have to re-enter the password every time they refresh. Sync the UI
+  // badge/button so the "Admin Mode" state is visible immediately.
+  function restoreAdminRoleFromStorage() {
+    try {
+      const stored = sessionStorage.getItem(ROLE_STORAGE_KEY);
+      if (stored === 'admin') {
+        userRole = 'admin';
+        if (elRoleBadge) {
+          elRoleBadge.textContent = 'Admin Mode';
+          elRoleBadge.className = 'role-badge admin';
+        }
+        if (elBtnAdminToggle) {
+          elBtnAdminToggle.textContent = '🔓';
+          elBtnAdminToggle.title = 'Lock Admin Mode';
+        }
+      }
+    } catch (e) {
+      // ignore storage errors (private mode, etc.)
+    }
+  }
+
   function init() {
+    // Always restore admin role first so the badge reflects the current
+    // session state before any UI is rendered.
+    restoreAdminRoleFromStorage();
+
     if (isInvitationVerified()) {
       // Already verified - skip the gate and run the app
       if (elInvitationGate && elInvitationGate.parentNode) {
@@ -665,6 +733,108 @@
     } else {
       // Show the gate and block the app until a valid code is entered
       setupInvitationGate();
+    }
+  }
+
+  // Sidebar status indicator — created on demand, updated by the diagnostic.
+  // Shows "✓ RLS OK" (green) when writes work, "✕ RLS Blocked" (red) when
+  // they don't, and "⏳ Checking…" while in flight. Click to re-run.
+  let elRlsStatus = null;
+  function ensureRlsStatusBadge() {
+    if (elRlsStatus && elRlsStatus.isConnected) return elRlsStatus;
+    // Find the sidebar header (where role badge lives) and insert a status
+    // line just below it.
+    const anchor = elRoleBadge ? elRoleBadge.parentElement : null;
+    if (!anchor) return null;
+    let el = document.getElementById('rlsStatusBadge');
+    if (!el) {
+      el = document.createElement('button');
+      el.id = 'rlsStatusBadge';
+      el.type = 'button';
+      el.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-top:6px;padding:2px 8px;font-size:10px;font-weight:600;border:0;border-radius:999px;cursor:pointer;background:#E0E0E0;color:#555;line-height:1.4;';
+      el.title = 'Click to re-test Supabase Row Level Security';
+      el.addEventListener('click', () => {
+        el.textContent = '⏳ Checking…';
+        el.style.background = '#FFF4D6';
+        el.style.color = '#8A6D00';
+        runRlsSelfDiagnostic();
+      });
+      // Insert after the role badge row
+      anchor.parentElement.insertBefore(el, anchor.nextSibling);
+    }
+    elRlsStatus = el;
+    return el;
+  }
+  function setRlsStatus(state, message) {
+    const el = ensureRlsStatusBadge();
+    if (!el) return;
+    if (state === 'ok') {
+      el.textContent = '✓ RLS OK';
+      el.style.background = '#D6F1E5';
+      el.style.color = '#0F6E56';
+      el.title = message || 'Supabase writes are working';
+    } else if (state === 'fail') {
+      el.textContent = '✕ RLS Blocked';
+      el.style.background = '#F8D7DA';
+      el.style.color = '#A32D2D';
+      el.title = message || 'Click to copy the fix SQL';
+      el.onclick = async (e) => {
+        e.preventDefault();
+        await copyRlsFixToClipboard();
+        showAlert('RLS fix SQL copied. Paste it in the Supabase SQL Editor, then refresh this page.', 'error', true);
+      };
+    } else {
+      el.textContent = '⏳ Checking…';
+      el.style.background = '#FFF4D6';
+      el.style.color = '#8A6D00';
+    }
+  }
+
+  // Run a self-diagnostic to detect whether RLS is silently blocking
+  // updates/deletes. We try a no-op UPDATE on the first member we can find;
+  // if the count comes back 0, RLS is the culprit. The check is harmless
+  // and idempotent (we restore the original value).
+  async function runRlsSelfDiagnostic() {
+    if (!supabase) { setRlsStatus('fail', 'Supabase client not configured'); return; }
+    setRlsStatus('checking');
+    try {
+      const { data: sample, error: selErr } = await supabase
+        .from('members')
+        .select('id,emoji')
+        .limit(1);
+      if (selErr || !sample || sample.length === 0) {
+        // No rows to test with (empty database). Try inserting a throwaway
+        // row, then delete it, to verify INSERT and DELETE are also unblocked.
+        const probeId = '__rls_probe_' + Date.now();
+        const { error: insErr } = await supabase.from('members').insert({
+          id: probeId, name: 'RLS Probe', birthDate: '', deathDate: '',
+          gender: 'male', color: 0, emoji: '🧪', bio: '', generation: 0,
+          x: -9999, y: -9999, approved: true, addedBy: 'admin'
+        });
+        if (insErr) { setRlsStatus('fail', 'INSERT blocked by RLS'); return; }
+        const { error: delErr } = await supabase
+          .from('members')
+          .delete()
+          .eq('id', probeId);
+        if (delErr) { setRlsStatus('fail', 'DELETE blocked by RLS'); return; }
+        setRlsStatus('ok', 'RLS allows INSERT and DELETE');
+        return;
+      }
+      const target = sample[0];
+      const original = target.emoji;
+      const { error: updErr, count } = await supabase
+        .from('members')
+        .update({ emoji: original }, { count: 'exact' })
+        .eq('id', target.id);
+      if (updErr) {
+        setRlsStatus('fail', 'UPDATE blocked by RLS: ' + (updErr.message || ''));
+      } else if (count === 0) {
+        setRlsStatus('fail', 'UPDATE silently no-op\'d (RLS blocking)');
+      } else {
+        setRlsStatus('ok', 'RLS allows SELECT, INSERT, UPDATE, DELETE');
+      }
+    } catch (e) {
+      setRlsStatus('fail', 'Diagnostic crashed: ' + (e && e.message || e));
     }
   }
 
@@ -681,6 +851,11 @@
     }
     members = data.members || [];
     relationships = data.relationships || [];
+
+    // Run a non-blocking RLS diagnostic. If writes/deletes are silently
+    // blocked, the user sees a sticky alert with a "Copy fix SQL" button,
+    // AND a red "✕ RLS Blocked" badge in the sidebar.
+    runRlsSelfDiagnostic();
   }
 
   // Legacy persistence helpers are no-ops now that Supabase owns the data.
@@ -1331,20 +1506,98 @@
     elBtnUndo.disabled = (historyStack.length === 0);
   }
 
-  function showAlert(text, type = 'success') {
+  // The full SQL the user needs to paste into the Supabase SQL Editor.
+  // Exposed on window so it can also be copied via the console if needed.
+  const RLS_FIX_SQL = [
+    'GRANT USAGE ON SCHEMA public TO anon;',
+    'GRANT ALL ON TABLE public.members TO anon;',
+    'GRANT ALL ON TABLE public.relationships TO anon;',
+    'ALTER TABLE public.members       ENABLE ROW LEVEL SECURITY;',
+    'ALTER TABLE public.relationships ENABLE ROW LEVEL SECURITY;',
+    'DROP POLICY IF EXISTS "qf_select_members"       ON public.members;',
+    'DROP POLICY IF EXISTS "qf_insert_members"       ON public.members;',
+    'DROP POLICY IF EXISTS "qf_update_members"       ON public.members;',
+    'DROP POLICY IF EXISTS "qf_delete_members"       ON public.members;',
+    'DROP POLICY IF EXISTS "qf_select_relationships" ON public.relationships;',
+    'DROP POLICY IF EXISTS "qf_insert_relationships" ON public.relationships;',
+    'DROP POLICY IF EXISTS "qf_update_relationships" ON public.relationships;',
+    'DROP POLICY IF EXISTS "qf_delete_relationships" ON public.relationships;',
+    'CREATE POLICY "qf_select_members"       ON public.members       FOR SELECT USING (true);',
+    'CREATE POLICY "qf_insert_members"       ON public.members       FOR INSERT WITH CHECK (true);',
+    'CREATE POLICY "qf_update_members"       ON public.members       FOR UPDATE USING (true) WITH CHECK (true);',
+    'CREATE POLICY "qf_delete_members"       ON public.members       FOR DELETE USING (true);',
+    'CREATE POLICY "qf_select_relationships" ON public.relationships FOR SELECT USING (true);',
+    'CREATE POLICY "qf_insert_relationships" ON public.relationships FOR INSERT WITH CHECK (true);',
+    'CREATE POLICY "qf_update_relationships" ON public.relationships FOR UPDATE USING (true) WITH CHECK (true);',
+    'CREATE POLICY "qf_delete_relationships" ON public.relationships FOR DELETE USING (true);',
+  ].join('\\n');
+  window.RLS_FIX_SQL = RLS_FIX_SQL;
+
+  async function copyRlsFixToClipboard() {
+    try {
+      await navigator.clipboard.writeText(RLS_FIX_SQL);
+      return true;
+    } catch (e) {
+      // Fallback for older browsers / non-secure contexts
+      const ta = document.createElement('textarea');
+      ta.value = RLS_FIX_SQL;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e2) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+  }
+
+  function showAlert(text, type = 'success', sticky = false) {
     if (alertTimeout) clearTimeout(alertTimeout);
-    
+
     elAlertToastText.textContent = text;
-    
+
     // Dot styling
     const colors = { success: '#1D9E75', warning: '#BA7517', error: '#A32D2D' };
     elAlertToastDot.style.backgroundColor = colors[type] || colors.success;
-    
+
+    // If the alert mentions RLS, add a one-click "Copy SQL" action to the
+    // toast so the user can fix the problem without leaving the app.
+    const existingAction = elAlertToast.querySelector('.alert-action-btn');
+    if (existingAction) existingAction.remove();
+    if (type === 'error' && typeof text === 'string' && /RLS|fix_rls_policies/i.test(text)) {
+      const btn = document.createElement('button');
+      btn.className = 'alert-action-btn';
+      btn.textContent = '📋 Copy fix SQL';
+      btn.style.cssText = 'margin-left:10px;padding:4px 10px;border:0;border-radius:6px;background:#1D9E75;color:#fff;font-size:12px;font-weight:600;cursor:pointer;';
+      btn.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        const ok = await copyRlsFixToClipboard();
+        btn.textContent = ok ? '✓ Copied! Paste in Supabase' : '✕ Copy failed';
+        if (ok) {
+          // Try to open the Supabase SQL editor in a new tab too
+          const supabaseUrl = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url) || '';
+          const m = supabaseUrl.match(/^https:\/\/(.+?)\.supabase\.co/);
+          if (m) {
+            const proj = m[1];
+            window.open('https://supabase.com/dashboard/project/' + proj + '/sql/new', '_blank', 'noopener');
+          }
+        }
+      });
+      elAlertToast.appendChild(btn);
+      sticky = true; // RLS errors must be dismissed explicitly
+    }
+
     elAlertToast.classList.add('visible');
-    
-    alertTimeout = setTimeout(() => {
-      elAlertToast.classList.remove('visible');
-    }, 3500);
+
+    if (!sticky) {
+      alertTimeout = setTimeout(() => {
+        elAlertToast.classList.remove('visible');
+      }, 3500);
+    } else {
+      // Make the toast clickable to dismiss
+      elAlertToast.onclick = () => elAlertToast.classList.remove('visible');
+    }
   }
 
   // ─── RENDERING ──────────────────────────────────────────────────────────────
@@ -2873,6 +3126,7 @@
       if (userRole === 'admin') {
         // Logout
         userRole = 'member';
+        try { sessionStorage.removeItem(ROLE_STORAGE_KEY); } catch (e) {}
         elRoleBadge.textContent = 'Guest Mode';
         elRoleBadge.className = 'role-badge guest';
         elBtnAdminToggle.textContent = '🔒';
@@ -2895,6 +3149,10 @@
       const pw = elAdminPasswordInput.value ? elAdminPasswordInput.value.trim().toLowerCase() : '';
       if (pw === 'jalpari') {
         userRole = 'admin';
+        // Persist so the admin doesn't have to re-enter the password on every
+        // page refresh. sessionStorage (cleared when the tab closes) is
+        // safer than localStorage for a write-only "demo" admin mode.
+        try { sessionStorage.setItem(ROLE_STORAGE_KEY, 'admin'); } catch (e) {}
         elRoleBadge.textContent = 'Admin Mode';
         elRoleBadge.className = 'role-badge admin';
         elBtnAdminToggle.textContent = '🔓';
