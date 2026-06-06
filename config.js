@@ -13,3 +13,4 @@ window.SUPABASE_CONFIG = {
   // to browsers as long as Row Level Security is enabled (or policies are set).
   anonKey: 'sb_publishable_sZbzgpx2MpHUaAXoJDeQ3w_iCfPkEJ9'
 };
+ 
