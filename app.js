@@ -148,11 +148,14 @@
         .delete()
         .or(`person1Id.eq.${id},person2Id.eq.${id}`);
       if (relErr) throw relErr;
+      console.log(`🗑️ dbDeleteMember: relationships involving ${id} deleted`);
 
-      const { error } = await supabase.from('members').delete().eq('id', id);
+      const { error, count } = await supabase.from('members').delete().eq('id', id);
       if (error) throw error;
+      console.log(`🗑️ dbDeleteMember: member ${id} deleted (${count !== null ? count : 'unknown'} rows)`);
       return true;
     } catch (err) {
+      console.error('🗑️ dbDeleteMember FAILED:', err);
       handleSupabaseError(err);
       return null;
     }
@@ -194,10 +197,14 @@
       return null;
     }
     try {
-      const { error } = await supabase.from('relationships').delete().eq('id', id);
+      const { error, count } = await supabase.from('relationships').delete().eq('id', id);
       if (error) throw error;
+      console.log(`🗑️ dbDeleteRelationship: ${id} — ${count !== null ? count : 'unknown'} rows deleted`);
+      // If count is 0 (no rows matched), it means the ID doesn't exist in the DB
+      // but we still return true so the local state gets cleaned up
       return true;
     } catch (err) {
+      console.error('🗑️ dbDeleteRelationship FAILED:', err);
       handleSupabaseError(err);
       return null;
     }
