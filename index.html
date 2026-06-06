@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kinship Explorer - Interactive Family Workspace</title>
-  
+  <title>Da Jalal Nasab — Family Lineage & Kinship</title>
+
   <!-- SEO Meta Tags -->
-  <meta name="description" content="An interactive, premium family tree workspace for visualizing, adding, and organizing family relations with smooth canvas panning, zooming, auto-alignment, and local CSV sync.">
-  
-  <!-- Google Fonts - Inter -->
+  <meta name="description" content="Da Jalal Nasab — an interactive, premium family lineage workspace for visualizing, adding, and organizing family relations with smooth canvas panning, zooming, auto-alignment, and local CSV sync.">
+
+  <!-- Google Fonts: Inter (UI) + Cinzel (Elegant Display) + Playfair Display (Brand accent) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;0,900;1,500;1,600&display=swap" rel="stylesheet">
   
   <!-- Color Scheme & Theme Initialization -->
   <meta name="color-scheme" content="light dark">
@@ -36,7 +36,11 @@
   <div id="invitationGate" class="invitation-gate" role="dialog" aria-modal="true" aria-labelledby="invitationGateTitle">
     <div class="invitation-card">
       <div class="invitation-logo" aria-hidden="true">🌳</div>
-      <h1 id="invitationGateTitle" class="invitation-title">Kinship Explorer</h1>
+      <h1 id="invitationGateTitle" class="invitation-title site-title">
+        <span class="site-title-ornament" aria-hidden="true">✦</span>
+        <span class="site-title-text">Da Jalal Nasab</span>
+        <span class="site-title-ornament" aria-hidden="true">✦</span>
+      </h1>
       <p class="invitation-subtitle">Private Invitation Required</p>
       <p class="invitation-desc">This family workspace is private. Please enter your invitation code to continue.</p>
       <form id="invitationForm" class="invitation-form" autocomplete="off">
@@ -75,7 +79,9 @@
         <div class="brand-info">
           <div class="logo-icon" aria-hidden="true">🌳</div>
           <div>
-            <h1 class="brand-text">Kinship Explorer</h1>
+            <h1 class="brand-text site-title site-title--sidebar">
+              <span class="site-title-text">Da Jalal Nasab</span>
+            </h1>
             <div style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
               <span id="roleBadge" class="role-badge guest">Guest Mode</span>
               <button id="btnAdminToggle" class="btn-admin-toggle" title="Unlock Admin Mode" aria-label="Unlock Admin Mode">🔒</button>
@@ -257,17 +263,16 @@
               <select id="quickAddGender" class="form-select">
                 <option value="male">Male</option>
                 <option value="female">Female</option>
-                <option value="other">Other</option>
               </select>
             </div>
             <div class="form-group">
-              <label for="quickAddGen" class="form-label">Generation</label>
-              <select id="quickAddGen" class="form-select">
-                <option value="0">Gen 1 (Grandparent)</option>
-                <option value="1" selected>Gen 2 (Parent)</option>
-                <option value="2">Gen 3 (Child)</option>
-                <option value="3">Gen 4 (Grandchild)</option>
+              <label for="quickAddGen" class="form-label">Generation <span class="form-label-aux">(auto)</span></label>
+              <select id="quickAddGen" class="form-select" disabled title="Auto-calculated from parent links">
+                <!-- Populated dynamically by JS as a read-only indicator -->
               </select>
+              <div style="font-size: 10px; color: var(--color-text-tertiary); margin-top: 4px; line-height: 1.4;">
+                Computed automatically from parent links. Use the Align button to reposition.
+              </div>
             </div>
           </div>
           
@@ -333,17 +338,16 @@
             <select id="memberDialogGender" class="form-select">
               <option value="male">Male</option>
               <option value="female">Female</option>
-              <option value="other">Other</option>
             </select>
           </div>
           <div class="form-group">
-            <label for="memberDialogGen" class="form-label">Generation</label>
-            <select id="memberDialogGen" class="form-select">
-              <option value="0">Gen 1 (Grandparent)</option>
-              <option value="1">Gen 2 (Parent)</option>
-              <option value="2">Gen 3 (Child)</option>
-              <option value="3">Gen 4 (Grandchild)</option>
+            <label for="memberDialogGen" class="form-label">Generation <span class="form-label-aux">(auto)</span></label>
+            <select id="memberDialogGen" class="form-select" disabled title="Auto-calculated from parent links">
+              <!-- Populated dynamically by JS as a read-only indicator -->
             </select>
+            <div style="font-size: 10px; color: var(--color-text-tertiary); margin-top: 4px; line-height: 1.4;">
+              Computed automatically from parent links. Use the Align button to reposition.
+            </div>
           </div>
         </div>
 
@@ -384,7 +388,7 @@
         <p class="relationship-dialog-help">Connect two members with a relationship type. The connection appears on the canvas.</p>
         
         <div class="form-group">
-          <label for="relationDialogP1" class="form-label">First member</label>
+          <label for="relationDialogP1" class="form-label" id="relationDialogP1Label">First member</label>
           <select id="relationDialogP1" class="form-select">
             <option value="">— select —</option>
             <!-- Member options will be inserted here dynamically -->
@@ -431,11 +435,32 @@
           </div>
         </div>
 
-        <div class="form-group">
-          <label for="relationDialogP2" class="form-label">Second member</label>
+        <!-- Spouse / Sibling slot: single Second-member picker -->
+        <div class="form-group" id="relationDialogP2Group">
+          <label for="relationDialogP2" class="form-label" id="relationDialogP2Label">Second member</label>
           <select id="relationDialogP2" class="form-select">
             <option value="">— select —</option>
             <!-- Member options will be inserted here dynamically -->
+          </select>
+          <div id="relationDialogP2Hint" class="form-hint" style="display: none;">
+            Pick one sibling — the new member will automatically be linked as a sibling of <strong id="relationDialogSiblingCount">0</strong> others in the group. Parents of the selected sibling will also be inherited.
+          </div>
+        </div>
+
+        <!-- Parent-child slot: separate Father (male) and Mother (female) pickers -->
+        <div class="form-group" id="relationDialogFatherGroup" style="display: none;">
+          <label for="relationDialogFather" class="form-label">Father <span class="form-label-aux">(male)</span></label>
+          <select id="relationDialogFather" class="form-select">
+            <option value="">— unknown —</option>
+            <!-- Male members will be inserted here dynamically -->
+          </select>
+        </div>
+
+        <div class="form-group" id="relationDialogMotherGroup" style="display: none;">
+          <label for="relationDialogMother" class="form-label">Mother <span class="form-label-aux">(female)</span></label>
+          <select id="relationDialogMother" class="form-select">
+            <option value="">— unknown —</option>
+            <!-- Female members will be inserted here dynamically -->
           </select>
         </div>
       </div>

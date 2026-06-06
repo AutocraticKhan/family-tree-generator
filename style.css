@@ -351,6 +351,145 @@ button, input, select, textarea {
   font-weight: 600;
 }
 
+/* ── SITE TITLE (DA JALAL NASAB) ─────────────────────────────────── */
+.site-title {
+  margin: 0;
+  font-family: 'Cinzel', 'Playfair Display', 'Times New Roman', serif;
+  font-weight: 700;
+  font-style: normal;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  background: linear-gradient(
+    135deg,
+    #6F5BD3 0%,
+    #534AB7 25%,
+    #2B2266 55%,
+    #534AB7 80%,
+    #8A7BE0 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  position: relative;
+}
+
+.site-title-text {
+  display: inline-block;
+  background: inherit;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.site-title-ornament {
+  -webkit-text-fill-color: var(--color-brand);
+  font-size: 0.55em;
+  font-weight: 600;
+  letter-spacing: 0;
+  opacity: 0.85;
+  display: inline-flex;
+  align-items: center;
+  transform: translateY(-0.05em);
+  text-shadow: 0 0 12px rgba(83, 74, 183, 0.35);
+  animation: site-ornament-pulse 3.2s ease-in-out infinite;
+}
+
+@keyframes site-ornament-pulse {
+  0%, 100% { opacity: 0.7; transform: translateY(-0.05em) scale(1); }
+  50%      { opacity: 1;   transform: translateY(-0.05em) scale(1.18); }
+}
+
+/* Sidebar variant — compact, prominent, single-line */
+.site-title--sidebar {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.05;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  white-space: nowrap;
+}
+
+.site-title--sidebar .site-title-text {
+  background: linear-gradient(
+    100deg,
+    #756bd4 0%,
+    #534AB7 40%,
+    #2B2266 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.5));
+}
+
+/* Override when the .site-title sits inside an inline style (e.g. empty detail state)
+   to keep the simple "No member selected" copy readable */
+p.site-title,
+.empty-detail-state .site-title {
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+  text-transform: none;
+  font-size: 13px;
+  font-weight: 500;
+  background: none;
+  -webkit-text-fill-color: var(--color-text-secondary);
+  color: var(--color-text-secondary);
+  text-shadow: none;
+  display: block;
+  gap: 0;
+  justify-content: flex-start;
+}
+p.site-title .site-title-ornament,
+.empty-detail-state .site-title .site-title-ornament {
+  display: none;
+}
+
+/* Dark mode adjustments — brighter gradient so it pops on dark background */
+:root[data-theme="dark"] .site-title,
+:root:not([data-theme="light"]) .site-title {
+  background: linear-gradient(
+    135deg,
+    #C9C0F5 0%,
+    #A59EF5 25%,
+    #756bd4 55%,
+    #A59EF5 80%,
+    #D4CCF9 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme="dark"] .site-title-ornament,
+:root:not([data-theme="light"]) .site-title-ornament {
+  -webkit-text-fill-color: #A59EF5;
+  text-shadow: 0 0 14px rgba(165, 158, 245, 0.6);
+}
+
+:root[data-theme="dark"] .site-title--sidebar .site-title-text,
+:root:not([data-theme="light"]) .site-title--sidebar .site-title-text {
+  background: linear-gradient(
+    100deg,
+    #C9C0F5 0%,
+    #A59EF5 40%,
+    #756bd4 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.3));
+}
+
 .brand-subtext {
   font-size: 11px;
   color: var(--color-text-secondary);
@@ -1248,6 +1387,27 @@ button, input, select, textarea {
   color: var(--color-text-secondary);
 }
 
+.form-label-aux {
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+  font-size: 10px;
+}
+
+.form-hint {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  line-height: 1.45;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--color-background-secondary);
+  border: 0.5px dashed var(--color-border-secondary);
+  border-radius: var(--radius-sm);
+}
+.form-hint strong {
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
 .form-input-text {
   width: 100%;
   background-color: var(--color-background-secondary);
@@ -2086,11 +2246,43 @@ dialog[open]::backdrop {
 }
 
 .invitation-title {
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 30px;
+  font-weight: 800;
   color: var(--color-text-primary);
-  margin: 0 0 4px;
-  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+}
+
+/* When the invitation title is also a .site-title, it uses gradient text */
+.invitation-title.site-title {
+  font-size: 34px;
+  margin: 4px 0 12px;
+  filter: drop-shadow(0 2px 4px rgba(83, 74, 183, 0.12));
+}
+
+.invitation-title.site-title .site-title-ornament {
+  font-size: 0.5em;
+  text-shadow: 0 0 16px rgba(83, 74, 183, 0.5);
+}
+
+/* Decorative gradient bar under the prominent title */
+.invitation-title.site-title::after {
+  content: "";
+  display: block;
+  width: 80px;
+  height: 3px;
+  margin: 12px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #534AB7 25%,
+    #8A7BE0 50%,
+    #534AB7 75%,
+    transparent 100%
+  );
+  opacity: 0.85;
 }
 
 .invitation-subtitle {

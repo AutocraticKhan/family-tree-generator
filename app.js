@@ -329,6 +329,15 @@
   const elBtnRelationDialogClose = document.getElementById('btnRelationDialogClose');
   const elRelationDialogP1 = document.getElementById('relationDialogP1');
   const elRelationDialogP2 = document.getElementById('relationDialogP2');
+  const elRelationDialogP1Label = document.getElementById('relationDialogP1Label');
+  const elRelationDialogP2Label = document.getElementById('relationDialogP2Label');
+  const elRelationDialogP2Group = document.getElementById('relationDialogP2Group');
+  const elRelationDialogP2Hint = document.getElementById('relationDialogP2Hint');
+  const elRelationDialogSiblingCount = document.getElementById('relationDialogSiblingCount');
+  const elRelationDialogFatherGroup = document.getElementById('relationDialogFatherGroup');
+  const elRelationDialogMotherGroup = document.getElementById('relationDialogMotherGroup');
+  const elRelationDialogFather = document.getElementById('relationDialogFather');
+  const elRelationDialogMother = document.getElementById('relationDialogMother');
   const elRelOptionSpouse = document.getElementById('relOptionSpouse');
   const elRelOptionSibling = document.getElementById('relOptionSibling');
   const elRelOptionParentChild = document.getElementById('relOptionParentChild');
@@ -667,6 +676,45 @@
     });
   }
 
+  // ─── AUTO GENERATION HELPERS ───────────────────────────────────────────────
+
+  // Suggests a generation for a brand-new standalone member (one with no
+  // parent links yet). The strategy is to drop them one row BELOW the
+  // deepest existing generation, so the new card appears at the bottom
+  // of the tree until a parent-child link is created — at which point
+  // recalculateGenerations() will promote them to the correct row.
+  // For an empty tree we return 0.
+  function getSuggestedGeneration() {
+    if (!members || members.length === 0) return 0;
+    let maxGen = 0;
+    for (let i = 0; i < members.length; i++) {
+      const g = members[i].generation;
+      if (typeof g === 'number' && g > maxGen) maxGen = g;
+    }
+    return Math.max(0, maxGen + 1);
+  }
+
+  // Populate a generation <select> with a single read-only option that
+  // shows the auto-calculated generation. The select stays disabled so
+  // the user cannot pick a different one — generation is purely a
+  // function of the parent-child graph.
+  function renderAutoGenSelect(selectEl, genValue) {
+    if (!selectEl) return;
+    const genInt = (typeof genValue === 'number' && isFinite(genValue)) ? genValue : 0;
+    const labels = ['Gen 1', 'Gen 2', 'Gen 3', 'Gen 4', 'Gen 5', 'Gen 6', 'Gen 7', 'Gen 8'];
+    const label = labels[genInt] || ('Gen ' + (genInt + 1));
+    if (selectEl.options.length === 1 && selectEl.options[0].textContent === label) {
+      selectEl.value = String(genInt);
+      return;
+    }
+    selectEl.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = String(genInt);
+    opt.textContent = label;
+    selectEl.appendChild(opt);
+    selectEl.value = String(genInt);
+  }
+
   // ─── PICKER RENDERERS ───────────────────────────────────────────────────────
   function renderEmojiPicker(container, selectedEmoji, onClickCallback) {
     container.innerHTML = '';
@@ -836,6 +884,45 @@
       }
     }
     return false;
+  }
+
+  // Returns a Set of all member IDs that belong to the same sibling group
+  // as the given person. The group includes the person themselves, all
+  // members connected via explicit 'sibling' relationships, and all
+  // members who share at least one parent (via 'parent-child' edges).
+  // The traversal is transitive: if A↔B are siblings and B↔C are siblings,
+  // all three end up in the same group.
+  function getSiblingGroup(personId) {
+    const group = new Set();
+    group.add(personId);
+    const queue = [personId];
+    while (queue.length > 0) {
+      const curr = queue.shift();
+
+      // 1. Walk explicit 'sibling' relationship edges
+      relationships.forEach(r => {
+        if (r.type === 'sibling') {
+          let siblingId = null;
+          if (r.person1Id === curr) siblingId = r.person2Id;
+          else if (r.person2Id === curr) siblingId = r.person1Id;
+          if (siblingId && !group.has(siblingId)) {
+            group.add(siblingId);
+            queue.push(siblingId);
+          }
+        }
+      });
+
+      // 2. Walk shared-parent edges: every child of the same parent is a sibling
+      getParents(curr).forEach(parentId => {
+        getChildren(parentId).forEach(childId => {
+          if (!group.has(childId)) {
+            group.add(childId);
+            queue.push(childId);
+          }
+        });
+      });
+    }
+    return group;
   }
 
   function isSiblingOfAncestor(personId, candidateId) {
@@ -1609,7 +1696,11 @@
   
   function addMember(data) {
     snapshot();
-    const gen = data.generation || 0;
+    // Generation is auto-derived from the relationship graph by
+    // recalculateGenerations() below. The caller-supplied value (if any)
+    // is intentionally ignored — see getSuggestedGeneration() for the
+    // initial spawn row.
+    const gen = getSuggestedGeneration();
     const newId = `id-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const isApproved = (userRole === 'admin');
     const newMember = {
@@ -1617,12 +1708,18 @@
       id: newId,
       x: 300 + Math.random() * 300,
       y: 120 + gen * 185 + Math.random() * 50,
+      generation: gen,
       approved: isApproved,
       addedBy: userRole
     };
     members.push(newMember);
     selectedId = newId;
     recalculateGenerations();
+    // After recalculation, re-sync y with the (possibly promoted) generation
+    // so the new card sits on the right row even if a parent-child link
+    // already exists for it.
+    const finalGen = (typeof newMember.generation === 'number') ? newMember.generation : gen;
+    newMember.y = 120 + finalGen * 185 + Math.random() * 50;
     saveToLocalStorage();
     renderAll();
     showAlert(`${newMember.name} added`);
@@ -1874,10 +1971,14 @@
         elQuickAddBirthY.value = '';
         quickAddEmoji = '👤';
         quickAddColor = 0;
-        
+
         renderEmojiPicker(elQuickAddEmojiGrid, quickAddEmoji, (em) => { quickAddEmoji = em; });
         renderColorPicker(elQuickAddColorGrid, quickAddColor, (idx) => { quickAddColor = idx; });
-        
+
+        // Generation is auto-derived from the relationship graph; show the
+        // current suggestion in the disabled select as a read-only indicator.
+        renderAutoGenSelect(elQuickAddGen, getSuggestedGeneration());
+
         elQuickAddName.focus();
       }
     });
@@ -2165,14 +2266,17 @@
         elQuickAddName.focus();
         return;
       }
-      
+
       const birthYVal = elQuickAddBirthY.value;
+      // The generation field is read-only and auto-derived from the graph
+      // by addMember(); we pass the suggestion just for the initial spawn
+      // y-coordinate. recalculateGenerations() will overwrite the actual
+      // generation once parent-child links exist.
       addMember({
         name: nameVal,
         emoji: quickAddEmoji,
         color: quickAddColor,
         gender: elQuickAddGender.value,
-        generation: parseInt(elQuickAddGen.value, 10),
         birthDate: birthYVal ? `${birthYVal}-01-01` : '',
         deathDate: '',
         bio: ''
@@ -2192,14 +2296,14 @@
     elBtnQuickAddMore.addEventListener('click', () => {
       const nameVal = elQuickAddName.value.trim();
       elQuickAddPanel.classList.remove('open');
-      
-      // Preset dialog fields
+
+      // Open the full dialog. Generation is auto-calculated inside
+      // openMemberModalForAdd(), so we don't pass it here.
       openMemberModalForAdd({
         name: nameVal,
         emoji: quickAddEmoji,
         color: quickAddColor,
         gender: elQuickAddGender.value,
-        generation: parseInt(elQuickAddGen.value, 10),
         birthDate: elQuickAddBirthY.value ? `${elQuickAddBirthY.value}-01-01` : '',
         deathDate: '',
         bio: ''
@@ -2223,6 +2327,11 @@
         return;
       }
 
+      // The generation field is read-only and auto-derived from the graph
+      // (see renderAutoGenSelect and recalculateGenerations). For new
+      // members, addMember() recomputes it. For edits, saveMember() also
+      // calls recalculateGenerations() afterwards, so any value we pass
+      // here is ignored.
       const data = {
         name: nameVal,
         emoji: memberDialogEmoji,
@@ -2230,7 +2339,6 @@
         birthDate: elMemberDialogBirthDate.value,
         deathDate: elMemberDialogDeathDate.value,
         gender: elMemberDialogGender.value,
-        generation: parseInt(elMemberDialogGen.value, 10),
         bio: elMemberDialogBio.value.trim(),
         milkMotherId: elMemberDialogMilkMother ? elMemberDialogMilkMother.value : ''
       };
@@ -2244,7 +2352,26 @@
       elMemberDialog.close();
     });
 
-    elRelationDialogP1.addEventListener('change', updateRelationDialogP2);
+    // When the P1 (Child / First member) changes, we need to refresh
+    // both the sibling-mode P2 list AND the father/mother dropdowns in
+    // parent-child mode.
+    elRelationDialogP1.addEventListener('change', () => {
+      if (relationDialogType === 'parent-child') {
+        updateRelationDialogFather();
+        updateRelationDialogMother();
+      } else {
+        updateRelationDialogP2();
+      }
+    });
+    elRelationDialogP2.addEventListener('change', updateRelationDialogSiblingHint);
+    elRelationDialogFather.addEventListener('change', () => {
+      // Re-render mother dropdown so the selected father is excluded
+      updateRelationDialogMother();
+    });
+    elRelationDialogMother.addEventListener('change', () => {
+      // Re-render father dropdown so the selected mother is excluded
+      updateRelationDialogFather();
+    });
 
     // Relation Dialog Radio Select
     const radioOptions = [
@@ -2267,7 +2394,7 @@
         const radio = opt.el.querySelector('.rel-option-radio');
         if (radio) radio.checked = true;
 
-        updateRelationDialogP2();
+        applyRelationDialogTypeLayout();
       });
 
       // Accessibility keybindings
@@ -2279,8 +2406,130 @@
       });
     });
 
-    // Relation Dialog Save
+    // ─── RELATION DIALOG SAVE ──────────────────────────────────────────────────
+    // The three relation types take very different inputs:
+    //   • spouse       → two free members
+    //   • sibling      → two free members; on save we auto-link the entire
+    //                    sibling group of P2 to P1 AND auto-inherit P2's parents
+    //                    onto P1 (per the user's "join the family" workflow)
+    //   • parent-child → child (P1) + optional father + optional mother; we
+    //                    create 1 or 2 parent-child edges in a single save
     elBtnRelationDialogSave.addEventListener('click', () => {
+      if (relationDialogType === 'parent-child') {
+        handleParentChildSave();
+      } else if (relationDialogType === 'sibling') {
+        handleSiblingSave();
+      } else {
+        handleSpouseSave();
+      }
+    });
+
+    function handleSpouseSave() {
+      const p1 = elRelationDialogP1.value;
+      const p2 = elRelationDialogP2.value;
+
+      if (!p1 || !p2) {
+        showAlert('Please select both members', 'error');
+        return;
+      }
+      if (p1 === p2) {
+        showAlert('Cannot connect a member to themselves', 'error');
+        return;
+      }
+      const check = checkSpouseBlock(p1, p2);
+      if (check.blocked) {
+        showAlert(`Cannot link: ${check.reason}`, 'error');
+        return;
+      }
+      saveRelation(p1, p2, 'spouse');
+      elRelationDialog.close();
+    }
+
+    function handleParentChildSave() {
+      const childId = elRelationDialogP1.value;
+      const fatherId = elRelationDialogFather.value;
+      const motherId = elRelationDialogMother.value;
+
+      if (!childId) {
+        showAlert('Please select a child', 'error');
+        return;
+      }
+      if (!fatherId && !motherId) {
+        showAlert('Please select at least a Father or a Mother', 'error');
+        return;
+      }
+      if (fatherId && motherId && fatherId === motherId) {
+        showAlert('Father and Mother cannot be the same person', 'error');
+        return;
+      }
+      // Defensive gender check (the dropdowns already filter by gender, but
+      // belt-and-braces in case data was edited manually or imported).
+      if (fatherId) {
+        const f = members.find(m => m.id === fatherId);
+        if (f && f.gender !== 'male') {
+          showAlert('Father must be a male member', 'error');
+          return;
+        }
+      }
+      if (motherId) {
+        const mo = members.find(m => m.id === motherId);
+        if (mo && mo.gender !== 'female') {
+          showAlert('Mother must be a female member', 'error');
+          return;
+        }
+      }
+      // Defensive: don't allow linking a child to themselves (shouldn't be
+      // possible given the dropdowns filter out the child, but be safe).
+      if ((fatherId && fatherId === childId) || (motherId && motherId === childId)) {
+        showAlert('A person cannot be their own parent', 'error');
+        return;
+      }
+
+      snapshot();
+      const isApproved = (userRole === 'admin');
+      let created = 0;
+
+      if (fatherId && !getParents(childId).includes(fatherId)) {
+        relationships.push({
+          id: `r-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          person1Id: fatherId,
+          person2Id: childId,
+          type: 'parent-child',
+          approved: isApproved,
+          addedBy: userRole
+        });
+        created++;
+      }
+      if (motherId && !getParents(childId).includes(motherId)) {
+        relationships.push({
+          id: `r-${Date.now() + 1}-${Math.floor(Math.random() * 1000)}`,
+          person1Id: motherId,
+          person2Id: childId,
+          type: 'parent-child',
+          approved: isApproved,
+          addedBy: userRole
+        });
+        created++;
+      }
+
+      if (created === 0) {
+        // Both already exist as parents — roll back the snapshot we just took
+        // so the undo stack doesn't show a no-op.
+        historyStack.pop();
+        updateUndoState();
+        showAlert('Both parents are already linked to this child', 'warning');
+        return;
+      }
+
+      recalculateGenerations();
+      saveToLocalStorage();
+      renderAll();
+      const childName = (members.find(m => m.id === childId) || {}).name || '?';
+      showAlert(`${childName} now has ${created} new parent link${created === 1 ? '' : 's'}`);
+      elRelationDialog.close();
+    }
+
+    function handleSiblingSave() {
       const p1 = elRelationDialogP1.value;
       const p2 = elRelationDialogP2.value;
 
@@ -2293,33 +2542,110 @@
         return;
       }
 
-      if (relationDialogType === 'spouse') {
-        const check = checkSpouseBlock(p1, p2);
-        if (check.blocked) {
-          showAlert(`Cannot link: ${check.reason}`, 'error');
-          return;
-        }
-      } else if (relationDialogType === 'sibling') {
-        const check = checkSiblingBlock(p1, p2);
-        if (check.blocked) {
-          showAlert(`Cannot link as siblings: ${check.reason}`, 'error');
-          return;
-        }
-        if (check.warn === 'step-sibling') {
-          const p1Name = (members.find(m => m.id === p1) || {}).name || '?';
-          const p2Name = (members.find(m => m.id === p2) || {}).name || '?';
-          const proceed = confirm(
-            `${p1Name} and ${p2Name} appear to be step-siblings — their parents are married but they share no biological parents. ` +
-            `In Islamic law this marriage is technically permissible, but many scholars advise against it.\n\n` +
-            `Connect them as siblings anyway?`
-          );
-          if (!proceed) return;
-        }
+      // Hard-block check against the anchor (P2). If the anchor itself can't
+      // be linked, the whole auto-group is impossible.
+      const anchorCheck = checkSiblingBlock(p1, p2);
+      if (anchorCheck.blocked) {
+        showAlert(`Cannot link as siblings: ${anchorCheck.reason}`, 'error');
+        return;
+      }
+      if (anchorCheck.warn === 'step-sibling') {
+        const p1Name = (members.find(m => m.id === p1) || {}).name || '?';
+        const p2Name = (members.find(m => m.id === p2) || {}).name || '?';
+        const proceed = confirm(
+          `${p1Name} and ${p2Name} appear to be step-siblings — their parents are married but they share no biological parents. ` +
+          `In Islamic law this marriage is technically permissible, but many scholars advise against it.\n\n` +
+          `Connect them as siblings anyway?`
+        );
+        if (!proceed) return;
       }
 
-      saveRelation(p1, p2, relationDialogType);
+      // Discover the entire sibling group of P2 and (optionally) extend it to
+      // P1. We do a single snapshot so the whole "join the family" action is
+      // one undo step.
+      snapshot();
+      const isApproved = (userRole === 'admin');
+      const group = getSiblingGroup(p2);
+      const p1Parents = new Set(getParents(p1));
+
+      let siblingLinksCreated = 0;
+      let parentLinksInherited = 0;
+      const skipped = [];
+
+      // 1) Create sibling edges between P1 and every other member of P2's group.
+      group.forEach(otherId => {
+        if (otherId === p1) return; // would be self-link
+        const check = checkSiblingBlock(p1, otherId);
+        if (check.blocked) {
+          skipped.push({ otherId, reason: check.reason });
+          return;
+        }
+        const isDuplicate = relationships.some(r =>
+          r.type === 'sibling' &&
+          ((r.person1Id === p1 && r.person2Id === otherId) ||
+           (r.person1Id === otherId && r.person2Id === p1))
+        );
+        if (isDuplicate) return;
+        relationships.push({
+          id: `r-${Date.now() + siblingLinksCreated}-${Math.floor(Math.random() * 1000)}`,
+          person1Id: p1,
+          person2Id: otherId,
+          type: 'sibling',
+          approved: isApproved,
+          addedBy: userRole
+        });
+        siblingLinksCreated++;
+      });
+
+      // 2) Inherit P2's parents onto P1. This is the "join the family" UX:
+      //    pick one sibling, the new member becomes a full child of the same
+      //    parents. We skip parents P1 already has (no duplicates) and skip
+      //    P1 themselves if they appear as a parent of P2 (impossible but
+      //    defensive against weird data).
+      const p2Parents = getParents(p2);
+      p2Parents.forEach(parentId => {
+        if (parentId === p1) return;
+        if (p1Parents.has(parentId)) return; // already has this parent
+        const isDuplicate = relationships.some(r =>
+          r.type === 'parent-child' && r.person1Id === parentId && r.person2Id === p1
+        );
+        if (isDuplicate) return;
+        relationships.push({
+          id: `r-${Date.now() + 100 + parentLinksInherited}-${Math.floor(Math.random() * 1000)}`,
+          person1Id: parentId,
+          person2Id: p1,
+          type: 'parent-child',
+          approved: isApproved,
+          addedBy: userRole
+        });
+        parentLinksInherited++;
+      });
+
+      if (siblingLinksCreated === 0 && parentLinksInherited === 0) {
+        // Nothing was actually created — roll back the snapshot.
+        historyStack.pop();
+        updateUndoState();
+        showAlert('No new links were created (already linked or blocked)', 'warning');
+        return;
+      }
+
+      recalculateGenerations();
+      saveToLocalStorage();
+      renderAll();
+
+      // Compose a friendly summary.
+      const p1Name = (members.find(m => m.id === p1) || {}).name || '?';
+      const parts = [];
+      if (siblingLinksCreated > 0) parts.push(`siblings with ${siblingLinksCreated} ${siblingLinksCreated === 1 ? 'member' : 'members'}`);
+      if (parentLinksInherited > 0) parts.push(`inherited ${parentLinksInherited} parent${parentLinksInherited === 1 ? '' : 's'}`);
+      const summary = parts.length ? parts.join(' and ') : 'no new links';
+      if (skipped.length > 0) {
+        showAlert(`${p1Name} joined the family (${summary}). ${skipped.length} sibling link${skipped.length === 1 ? ' was' : 's were'} skipped due to kinship rules.`);
+      } else {
+        showAlert(`${p1Name} joined the family (${summary})`);
+      }
       elRelationDialog.close();
-    });
+    }
 
     // Admin Toggle lock button
     elBtnAdminToggle.addEventListener('click', () => {
@@ -2416,8 +2742,11 @@
     elMemberDialogBirthDate.value = presetData ? presetData.birthDate : '';
     elMemberDialogDeathDate.value = presetData ? presetData.deathDate : '';
     elMemberDialogGender.value = presetData ? presetData.gender : 'male';
-    elMemberDialogGen.value = presetData ? presetData.generation : 1;
     elMemberDialogBio.value = presetData ? presetData.bio : '';
+
+    // Generation field is read-only and auto-derived from the graph.
+    // For a brand-new member, show the next-available row suggestion.
+    renderAutoGenSelect(elMemberDialogGen, getSuggestedGeneration());
 
     renderEmojiPicker(elMemberDialogEmojiGrid, memberDialogEmoji, (em) => { memberDialogEmoji = em; });
     renderModalColorPicker(elMemberDialogColorGrid, memberDialogColor, (idx) => { memberDialogColor = idx; });
@@ -2438,8 +2767,11 @@
     elMemberDialogBirthDate.value = member.birthDate || '';
     elMemberDialogDeathDate.value = member.deathDate || '';
     elMemberDialogGender.value = member.gender || 'male';
-    elMemberDialogGen.value = member.generation !== undefined ? member.generation : 1;
     elMemberDialogBio.value = member.bio || '';
+
+    // Generation field is read-only and shows the member's current
+    // computed generation (which is already a function of their parents).
+    renderAutoGenSelect(elMemberDialogGen, (typeof member.generation === 'number') ? member.generation : 0);
 
     renderEmojiPicker(elMemberDialogEmojiGrid, memberDialogEmoji, (em) => { memberDialogEmoji = em; });
     renderModalColorPicker(elMemberDialogColorGrid, memberDialogColor, (idx) => { memberDialogColor = idx; });
@@ -2463,6 +2795,7 @@
         if (m.id === selectedP2Val) opt.selected = true;
         elRelationDialogP2.appendChild(opt);
       });
+      updateRelationDialogSiblingHint();
       return;
     }
 
@@ -2477,9 +2810,6 @@
       } else if (relationDialogType === 'sibling') {
         const check = checkSiblingBlock(p1Id, m.id);
         if (check.blocked) return;
-        // Also drop parent/child from the P1 dropdown view by being explicit:
-        // (checkSiblingBlock already returns blocked for those, this is just
-        // a defensive belt-and-braces in case data is incomplete.)
       }
 
       const opt = document.createElement('option');
@@ -2499,11 +2829,131 @@
       if (m.id === selectedP2Val) opt.selected = true;
       elRelationDialogP2.appendChild(opt);
     });
+    updateRelationDialogSiblingHint();
+  }
+
+  // Populate the Father (male) dropdown. Excludes:
+  //   - the child (P1) themselves
+  //   - the currently-selected mother (can't be the same person as father)
+  //   - the child already has as a father (defensive: would be a duplicate)
+  function updateRelationDialogFather() {
+    const childId = elRelationDialogP1.value;
+    const motherId = elRelationDialogMother ? elRelationDialogMother.value : '';
+    const selectedVal = elRelationDialogFather.value;
+    elRelationDialogFather.innerHTML = '<option value="">— unknown —</option>';
+
+    if (!childId) return;
+
+    const child = members.find(m => m.id === childId);
+    if (!child) return;
+
+    const existingFatherIds = getFathers(childId);
+
+    const sortedMales = members
+      .filter(m => m.id !== childId)
+      .filter(m => m.gender === 'male')
+      .filter(m => m.id !== motherId)
+      .filter(m => !existingFatherIds.includes(m.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    sortedMales.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = (m.emoji || '👤') + ' ' + m.name;
+      if (m.id === selectedVal) opt.selected = true;
+      elRelationDialogFather.appendChild(opt);
+    });
+  }
+
+  // Populate the Mother (female) dropdown. Symmetric to updateRelationDialogFather().
+  function updateRelationDialogMother() {
+    const childId = elRelationDialogP1.value;
+    const fatherId = elRelationDialogFather ? elRelationDialogFather.value : '';
+    const selectedVal = elRelationDialogMother.value;
+    elRelationDialogMother.innerHTML = '<option value="">— unknown —</option>';
+
+    if (!childId) return;
+
+    const child = members.find(m => m.id === childId);
+    if (!child) return;
+
+    const existingMotherIds = getMothers(childId);
+
+    const sortedFemales = members
+      .filter(m => m.id !== childId)
+      .filter(m => m.gender === 'female')
+      .filter(m => m.id !== fatherId)
+      .filter(m => !existingMotherIds.includes(m.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    sortedFemales.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = (m.emoji || '👤') + ' ' + m.name;
+      if (m.id === selectedVal) opt.selected = true;
+      elRelationDialogMother.appendChild(opt);
+    });
+  }
+
+  // When the relation type is "sibling", the P2 dropdown shows existing members
+  // with at least one sibling. The hint text tells the user how many siblings
+  // will be auto-linked. We compute that count here so it updates as P1 or P2
+  // changes.
+  function updateRelationDialogSiblingHint() {
+    if (relationDialogType !== 'sibling') {
+      elRelationDialogP2Hint.style.display = 'none';
+      return;
+    }
+    const p2Id = elRelationDialogP2.value;
+    if (!p2Id) {
+      elRelationDialogP2Hint.style.display = 'none';
+      return;
+    }
+    const group = getSiblingGroup(p2Id);
+    // Exclude the P1 (new member being added) from the count, since P1
+    // is the one being added to the group rather than an existing member.
+    const p1Id = elRelationDialogP1.value;
+    let count = group.size;
+    if (p1Id && group.has(p1Id)) count -= 1;
+    // Also exclude P2 itself from the count
+    count -= 1;
+    if (count < 0) count = 0;
+    elRelationDialogSiblingCount.textContent = String(count);
+    elRelationDialogP2Hint.style.display = '';
+  }
+
+  // Switch the dialog's lower slot between "Second member" (spouse/sibling)
+  // and "Father + Mother" (parent-child). Also relabels P1 as "Child" for the
+  // parent-child flow.
+  function applyRelationDialogTypeLayout() {
+    if (relationDialogType === 'parent-child') {
+      elRelationDialogP1Label.textContent = 'Child';
+      elRelationDialogP2Group.style.display = 'none';
+      elRelationDialogFatherGroup.style.display = '';
+      elRelationDialogMotherGroup.style.display = '';
+      updateRelationDialogFather();
+      updateRelationDialogMother();
+    } else {
+      elRelationDialogP1Label.textContent = 'First member';
+      elRelationDialogP2Group.style.display = '';
+      elRelationDialogFatherGroup.style.display = 'none';
+      elRelationDialogMotherGroup.style.display = 'none';
+      if (relationDialogType === 'sibling') {
+        elRelationDialogP2Label.textContent = 'Sibling anchor';
+        elRelationDialogP2Hint.style.display = '';
+      } else {
+        elRelationDialogP2Label.textContent = 'Second member';
+        elRelationDialogP2Hint.style.display = 'none';
+      }
+      updateRelationDialogP2();
+    }
   }
 
   function openRelationModal(presetP1Id) {
     elRelationDialogP1.innerHTML = '<option value="">— select —</option>';
     elRelationDialogP2.innerHTML = '<option value="">— select —</option>';
+    elRelationDialogFather.value = '';
+    elRelationDialogMother.value = '';
 
     // Sort members alphabetically for easy lookup
     const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
@@ -2516,7 +2966,7 @@
       elRelationDialogP1.appendChild(opt1);
     });
 
-    // Reset relation selection
+    // Reset relation selection (this also triggers applyRelationDialogTypeLayout)
     elRelOptionSpouse.click();
 
     elRelationDialog.showModal();
