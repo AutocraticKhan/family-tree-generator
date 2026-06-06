@@ -112,9 +112,9 @@
       return null;
     }
     try {
-      const { data: created, error } = await supabase.from('members').insert(data).select().single();
+      const { data: created, error } = await supabase.from('members').insert(data).select();
       if (error) throw error;
-      return created;
+      return (created && created.length > 0) ? created[0] : null;
     } catch (err) {
       handleSupabaseError(err);
       return null;
@@ -127,9 +127,9 @@
       return null;
     }
     try {
-      const { data: updated, error } = await supabase.from('members').update(data).eq('id', id).select().single();
+      const { data: updated, error } = await supabase.from('members').update(data).eq('id', id).select();
       if (error) throw error;
-      return updated;
+      return (updated && updated.length > 0) ? updated[0] : null;
     } catch (err) {
       handleSupabaseError(err);
       return null;
@@ -164,9 +164,9 @@
       return null;
     }
     try {
-      const { data: created, error } = await supabase.from('relationships').insert(data).select().single();
+      const { data: created, error } = await supabase.from('relationships').insert(data).select();
       if (error) throw error;
-      return created;
+      return (created && created.length > 0) ? created[0] : null;
     } catch (err) {
       handleSupabaseError(err);
       return null;
@@ -179,9 +179,9 @@
       return null;
     }
     try {
-      const { data: updated, error } = await supabase.from('relationships').update(data).eq('id', id).select().single();
+      const { data: updated, error } = await supabase.from('relationships').update(data).eq('id', id).select();
       if (error) throw error;
-      return updated;
+      return (updated && updated.length > 0) ? updated[0] : null;
     } catch (err) {
       handleSupabaseError(err);
       return null;
