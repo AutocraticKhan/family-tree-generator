@@ -1319,6 +1319,14 @@ p.site-title .site-title-ornament,
 .node-color-5 .node-avatar { background-color: var(--node-theme-5-bg); }
 .node-color-5 .node-generation-badge { background-color: var(--node-theme-5-light); color: var(--node-theme-5-hex); }
 
+/* Gender-tinted card backgrounds (male = light blue, female = light pink).
+   Reuses --node-theme-*-light vars (theme 5 = Blue, theme 3 = Pink) so the
+   tints stay consistent with the picker palette and auto-pick the correct
+   darker values in dark mode. The .node-card.pending rule below still wins
+   via !important, so unapproved cards look pending. */
+.node-card.gender-male   { background-color: var(--node-theme-5-light); }   /* #E6F1FB → #101c2b in dark */
+.node-card.gender-female { background-color: var(--node-theme-3-light); }   /* #FBEAF0 → #2c121b in dark */
+
 
 /* ── QUICK ADD PANEL ────────────────────────────────────────────────────────── */
 .quick-add-panel {

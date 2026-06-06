@@ -1715,7 +1715,10 @@
       // Create card element
       const card = document.createElement('div');
       const isPending = !m.approved;
-      card.className = `node-card node-color-${m.color} ${isSelected ? 'selected' : ''} ${linkedRel ? 'linked' : ''} ${isFaded ? 'faded' : ''} ${isPending ? 'pending' : ''}`;
+      // Add gender-* class for background tint (male = light blue, female = light pink).
+      // Falls back to default card background when gender is missing/unknown.
+      const genderClass = (m.gender === 'male' || m.gender === 'female') ? `gender-${m.gender}` : '';
+      card.className = `node-card node-color-${m.color} ${genderClass} ${isSelected ? 'selected' : ''} ${linkedRel ? 'linked' : ''} ${isFaded ? 'faded' : ''} ${isPending ? 'pending' : ''}`;
       card.style.left = `${m.x}px`;
       card.style.top = `${m.y}px`;
       card.setAttribute('data-id', m.id);
