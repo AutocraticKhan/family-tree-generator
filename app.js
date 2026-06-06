@@ -55,6 +55,184 @@
   const NODE_W = 176;
   const NODE_H = 76;
 
+  // ─── SUPABASE CLIENT ─────────────────────────────────────────────────────
+  // The real URL and anon key are read from a gitignored config.js (loaded
+  // before this file in index.html). When the placeholders are still in place
+  // or the CDN didn't load, we fall back to `null` and the loader refuses to
+  // start the app — surfacing a clear "Data from Supabase not accessible"
+  // error in the toast.
+  const SUPABASE_URL = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url) || '';
+  const SUPABASE_ANON_KEY = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.anonKey) || '';
+  const SUPABASE_CONFIGURED =
+    SUPABASE_URL.startsWith('https://') &&
+    SUPABASE_URL.indexOf('YOUR_PROJECT_ID') === -1 &&
+    SUPABASE_ANON_KEY.length > 40 &&
+    SUPABASE_ANON_KEY.indexOf('YOUR_SUPABASE_ANON_KEY') === -1;
+
+  const supabase = (SUPABASE_CONFIGURED && window.supabase && typeof window.supabase.createClient === 'function')
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+
+  const SUPABASE_ERROR_MESSAGE = 'Data from Supabase not accessible';
+  function supabaseNotConfiguredAlert() {
+    showAlert(SUPABASE_ERROR_MESSAGE, 'error');
+  }
+  function handleSupabaseError(err, fallbackMessage) {
+    console.error('Supabase error:', err);
+    const msg = (err && err.message) ? err.message : (fallbackMessage || SUPABASE_ERROR_MESSAGE);
+    showAlert(msg, 'error');
+  }
+
+  // ─── DB* HELPERS (Supabase CRUD layer) ───────────────────────────────────────
+  // Every function returns the created/updated row on success, or null on error.
+  // On error, `handleSupabaseError` is called automatically.
+
+  async function dbFetchAll() {
+    if (!supabase) {
+      supabaseNotConfiguredAlert();
+      return null;
+    }
+    try {
+      const [memRes, relRes] = await Promise.all([
+        supabase.from('members').select('*'),
+        supabase.from('relationships').select('*')
+      ]);
+      if (memRes.error) throw memRes.error;
+      if (relRes.error) throw relRes.error;
+      return { members: memRes.data || [], relationships: relRes.data || [] };
+    } catch (err) {
+      handleSupabaseError(err);
+      return null;
+    }
+  }
+
+  async function dbAddMember(data) {
+    if (!supabase) {
+      supabaseNotConfiguredAlert();
+      return null;
+    }
+    try {
+      const { data: created, error } = await supabase.from('members').insert(data).select().single();
+      if (error) throw error;
+      return created;
+    } catch (err) {
+      handleSupabaseError(err);
+      return null;
+    }
+  }
+
+  async function dbUpdateMember(id, data) {
+    if (!supabase) {
+      supabaseNotConfiguredAlert();
+      return null;
+    }
+    try {
+      const { data: updated, error } = await supabase.from('members').update(data).eq('id', id).select().single();
+      if (error) throw error;
+      return updated;
+    } catch (err) {
+      handleSupabaseError(err);
+      return null;
+    }
+  }
+
+  async function dbDeleteMember(id) {
+    if (!supabase) {
+      supabaseNotConfiguredAlert();
+      return null;
+    }
+    try {
+      // Delete all relationships involving this member first
+      const { error: relErr } = await supabase
+        .from('relationships')
+        .delete()
+        .or(`person1Id.eq.${id},person2Id.eq.${id}`);
+      if (relErr) throw relErr;
+
+      const { error } = await supabase.from('members').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      handleSupabaseError(err);
+      return null;
+    }
+  }
+
+  async function dbAddRelationship(data) {
+    if (!supabase) {
+      supabaseNotConfiguredAlert();
+      return null;
+    }
+    try {
+      const { data: created, error } = await supabase.from('relationships').insert(data).select().single();
+      if (error) throw error;
+      return created;
+    } catch (err) {
+      handleSupabaseError(err);
+      return null;
+    }
+  }
+
+  async function dbUpdateRelationship(id, data) {
+    if (!supabase) {
+      supabaseNotConfiguredAlert();
+      return null;
+    }
+    try {
+      const { data: updated, error } = await supabase.from('relationships').update(data).eq('id', id).select().single();
+      if (error) throw error;
+      return updated;
+    } catch (err) {
+      handleSupabaseError(err);
+      return null;
+    }
+  }
+
+  async function dbDeleteRelationship(id) {
+    if (!supabase) {
+      supabaseNotConfiguredAlert();
+      return null;
+    }
+    try {
+      const { error } = await supabase.from('relationships').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      handleSupabaseError(err);
+      return null;
+    }
+  }
+
+  async function dbReplaceAll(newMembers, newRelationships) {
+    // Atomically replaces ALL data. Strategy: delete all existing rows, then insert.
+    // Because Supabase doesn't support DDL transactions over HTTP, we run deletes
+    // and inserts sequentially. If either fails the in-memory state stays unchanged
+    // so the undo stack is preserved.
+    if (!supabase) {
+      supabaseNotConfiguredAlert();
+      return null;
+    }
+    try {
+      const { error: delMemErr } = await supabase.from('members').delete().neq('id', '__dummy__');
+      if (delMemErr) throw delMemErr;
+      const { error: delRelErr } = await supabase.from('relationships').delete().neq('id', '__dummy__');
+      if (delRelErr) throw delRelErr;
+
+      if (newMembers.length > 0) {
+        const { error: insMemErr } = await supabase.from('members').insert(newMembers);
+        if (insMemErr) throw insMemErr;
+      }
+      if (newRelationships.length > 0) {
+        const { error: insRelErr } = await supabase.from('relationships').insert(newRelationships);
+        if (insRelErr) throw insRelErr;
+      }
+      return true;
+    } catch (err) {
+      handleSupabaseError(err);
+      return null;
+    }
+  }
+
   // ─── CSV HELPERS ────────────────────────────────────────────────────────────
   function csvEscape(value) {
     if (value === null || value === undefined) return '';
@@ -484,95 +662,24 @@
   }
 
   async function loadData() {
-    // 1. Try the server API first (live CSV files on disk)
-    try {
-      const [memRes, relRes] = await Promise.all([
-        fetch('/api/members'),
-        fetch('/api/relationships')
-      ]);
-      if (memRes.ok && relRes.ok) {
-        const memText = await memRes.text();
-        const relText = await relRes.text();
-        members = csvToMembers(memText);
-        relationships = csvToRelationships(relText);
-        saveToLocalStorage();
-        return;
-      }
-    } catch (e) {
-      console.warn('Server API not available, trying alternative sources.', e);
+    // Supabase is the only data source. The localStorage/CSV/DEFAULT chain is
+    // replaced by a single Supabase fetch. If the config is missing or the call
+    // fails we surface 'Data from Supabase not accessible' and stop.
+    const data = await dbFetchAll();
+    if (!data) {
+      // dbFetchAll already called handleSupabaseError / supabaseNotConfiguredAlert
+      // Leave the in-memory arrays empty — the canvas will render nothing, and
+      // users can start adding data from scratch.
+      return;
     }
-
-    // 2. Try local storage (CSV format)
-    try {
-      const storedMembers = localStorage.getItem('family_tree_members_csv');
-      const storedRels = localStorage.getItem('family_tree_relationships_csv');
-      if (storedMembers && storedRels) {
-        members = csvToMembers(storedMembers);
-        relationships = csvToRelationships(storedRels);
-        return;
-      }
-    } catch (e) {
-      console.warn('Failed parsing local storage CSV data', e);
-    }
-
-    // 3. Try fetching members.csv and relationships.csv directly (static files)
-    try {
-      const [memRes, relRes] = await Promise.all([
-        fetch('members.csv'),
-        fetch('relationships.csv')
-      ]);
-      if (memRes.ok && relRes.ok) {
-        const memText = await memRes.text();
-        const relText = await relRes.text();
-        members = csvToMembers(memText);
-        relationships = csvToRelationships(relText);
-        saveToLocalStorage();
-        return;
-      }
-    } catch (e) {
-      console.warn('Failed fetching CSV files (often due to local file:// CORS policies). Falling back to internal data.', e);
-    }
-
-    // 4. Fallback to default copy (round-tripped through CSV to keep in-memory shape consistent)
-    const defaultMemCsv = membersToCsv(DEFAULT_DATA.members.map(m => Object.assign({ approved: true, addedBy: 'admin' }, m)));
-    const defaultRelCsv = relationshipsToCsv(DEFAULT_DATA.relationships.map(r => Object.assign({ approved: true, addedBy: 'admin' }, r)));
-    members = csvToMembers(defaultMemCsv);
-    relationships = csvToRelationships(defaultRelCsv);
-    saveToLocalStorage();
+    members = data.members || [];
+    relationships = data.relationships || [];
   }
 
-  function saveToLocalStorage() {
-    try {
-      localStorage.setItem('family_tree_members_csv', membersToCsv(members));
-      localStorage.setItem('family_tree_relationships_csv', relationshipsToCsv(relationships));
-      // Clean up legacy JSON cache if present
-      if (localStorage.getItem('family_tree_data')) {
-        localStorage.removeItem('family_tree_data');
-      }
-    } catch (e) {
-      console.warn('Failed to save to localStorage', e);
-    }
-
-    // Live-sync CSV files on disk via the server API
-    syncCsvToDisk();
-  }
-
-  function syncCsvToDisk() {
-    const memCsv = membersToCsv(members);
-    const relCsv = relationshipsToCsv(relationships);
-
-    fetch('/api/members', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'text/csv' },
-      body: memCsv
-    }).catch(() => { /* server not available, ignore */ });
-
-    fetch('/api/relationships', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'text/csv' },
-      body: relCsv
-    }).catch(() => { /* server not available, ignore */ });
-  }
+  // Legacy persistence helpers are no-ops now that Supabase owns the data.
+  // Kept as stubs so any leftover callsites in older forks don't throw.
+  function saveToLocalStorage() { /* no-op: data lives in Supabase now */ }
+  function syncCsvToDisk() { /* no-op: data lives in Supabase now */ }
 
   // ─── HELPERS ────────────────────────────────────────────────────────────────
   function canModifyMember(member) {
@@ -1732,12 +1839,8 @@
 
   // ─── CRUD ACTIONS ───────────────────────────────────────────────────────────
   
-  function addMember(data) {
+  async function addMember(data) {
     snapshot();
-    // Generation is auto-derived from the relationship graph by
-    // recalculateGenerations() below. The caller-supplied value (if any)
-    // is intentionally ignored — see getSuggestedGeneration() for the
-    // initial spawn row.
     const gen = getSuggestedGeneration();
     const newId = `id-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const isApproved = (userRole === 'admin');
@@ -1750,60 +1853,73 @@
       approved: isApproved,
       addedBy: userRole
     };
+    const created = await dbAddMember(newMember);
+    if (!created) {
+      historyStack.pop();
+      updateUndoState();
+      return;
+    }
+    Object.assign(newMember, created);
     members.push(newMember);
-    selectedId = newId;
+    selectedId = newMember.id;
     recalculateGenerations();
-    // After recalculation, re-sync y with the (possibly promoted) generation
-    // so the new card sits on the right row even if a parent-child link
-    // already exists for it.
     const finalGen = (typeof newMember.generation === 'number') ? newMember.generation : gen;
     newMember.y = 120 + finalGen * 185 + Math.random() * 50;
-    saveToLocalStorage();
     renderAll();
     showAlert(`${newMember.name} added`);
   }
 
-  function saveMember(id, data) {
+  async function saveMember(id, data) {
     const member = members.find(m => m.id === id);
     if (!member || !canModifyMember(member)) {
       showAlert('You do not have permission to modify this member', 'error');
       return;
     }
     snapshot();
+    const ok = await dbUpdateMember(id, data);
+    if (!ok) {
+      historyStack.pop();
+      updateUndoState();
+      return;
+    }
     const idx = members.findIndex(m => m.id === id);
     if (idx !== -1) {
       members[idx] = { ...members[idx], ...data };
       recalculateGenerations();
-      saveToLocalStorage();
       renderAll();
       showAlert('Member updated');
     }
   }
 
-  function deleteMember(id) {
+  async function deleteMember(id) {
     const member = members.find(m => m.id === id);
     if (!member || !canModifyMember(member)) {
       showAlert('You do not have permission to remove this member', 'error');
       return;
     }
     snapshot();
+    const ok = await dbDeleteMember(id);
+    if (!ok) {
+      historyStack.pop();
+      updateUndoState();
+      return;
+    }
     members = members.filter(m => m.id !== id);
     relationships = relationships.filter(r => r.person1Id !== id && r.person2Id !== id);
     if (selectedId === id) {
       selectedId = null;
     }
     recalculateGenerations();
-    saveToLocalStorage();
     renderAll();
     showAlert(`${member ? member.name : 'Member'} removed`, 'warning');
   }
 
-  function saveRelation(p1, p2, type) {
+  async function saveRelation(p1, p2, type) {
     // Check if duplicate exists
-    const duplicate = relationships.some(r => 
+    const duplicate = relationships.some(r =>
       ((r.person1Id === p1 && r.person2Id === p2) || (r.person1Id === p2 && r.person2Id === p1)) && r.type === type
     );
-    
+
     if (duplicate) {
       showAlert('This link already exists', 'error');
       return;
@@ -1819,52 +1935,71 @@
       approved: isApproved,
       addedBy: userRole
     };
+    const created = await dbAddRelationship(newRel);
+    if (!created) {
+      historyStack.pop();
+      updateUndoState();
+      return;
+    }
+    Object.assign(newRel, created);
     relationships.push(newRel);
     recalculateGenerations();
-    saveToLocalStorage();
     renderAll();
     showAlert('Link created');
   }
 
-  function deleteRelation(id) {
+  async function deleteRelation(id) {
     const rel = relationships.find(r => r.id === id);
     if (!rel || !canModifyRelation(rel)) {
       showAlert('You do not have permission to remove this link', 'error');
       return;
     }
     snapshot();
+    const ok = await dbDeleteRelationship(id);
+    if (!ok) {
+      historyStack.pop();
+      updateUndoState();
+      return;
+    }
     relationships = relationships.filter(r => r.id !== id);
     recalculateGenerations();
-    saveToLocalStorage();
     renderAll();
     showAlert('Link removed', 'warning');
   }
 
   // Moderation Methods
-  function approveMember(id) {
+  async function approveMember(id) {
     snapshot();
     const m = members.find(x => x.id === id);
-    if (m) {
-      m.approved = true;
-      saveToLocalStorage();
-      renderAll();
-      showAlert(`${m.name} approved`);
+    if (!m) return;
+    const ok = await dbUpdateMember(id, { approved: true });
+    if (!ok) {
+      historyStack.pop();
+      updateUndoState();
+      return;
     }
+    m.approved = true;
+    renderAll();
+    showAlert(`${m.name} approved`);
   }
 
   function rejectMember(id) {
     deleteMember(id);
   }
 
-  function approveRelation(id) {
+  async function approveRelation(id) {
     snapshot();
     const r = relationships.find(x => x.id === id);
-    if (r) {
-      r.approved = true;
-      saveToLocalStorage();
-      renderAll();
-      showAlert('Link approved');
+    if (!r) return;
+    const ok = await dbUpdateRelationship(id, { approved: true });
+    if (!ok) {
+      historyStack.pop();
+      updateUndoState();
+      return;
     }
+    r.approved = true;
+    renderAll();
+    showAlert('Link approved');
   }
 
   function rejectRelation(id) {
@@ -2126,6 +2261,11 @@
       }
       
       if (draggedNodeId) {
+        // Persist the dragged node's new position to Supabase
+        const m = members.find(x => x.id === draggedNodeId);
+        if (m) {
+          dbUpdateMember(draggedNodeId, { x: m.x, y: m.y });
+        }
         draggedNodeId = null;
         saveToLocalStorage();
       }
@@ -2233,7 +2373,7 @@
       let importedRels = null;
       let hadError = false;
 
-      function tryFinish() {
+      async function tryFinish() {
         if (hadError) return;
         if (pending > 0) return;
         if (importedMembers === null && importedRels === null) {
@@ -2242,12 +2382,24 @@
           return;
         }
         snapshot();
-        if (importedMembers) {
-          members = importedMembers.map(m => Object.assign({ approved: true, addedBy: 'admin' }, m));
+        const newMembers = importedMembers
+          ? importedMembers.map(m => Object.assign({ approved: true, addedBy: 'admin' }, m))
+          : [];
+        const newRels = importedRels
+          ? importedRels.map(r => Object.assign({ approved: true, addedBy: 'admin' }, r))
+          : [];
+
+        // Persist to Supabase before updating local state
+        const ok = await dbReplaceAll(newMembers, newRels);
+        if (!ok) {
+          historyStack.pop();
+          updateUndoState();
+          e.target.value = '';
+          return;
         }
-        if (importedRels) {
-          relationships = importedRels.map(r => Object.assign({ approved: true, addedBy: 'admin' }, r));
-        }
+
+        members = newMembers;
+        relationships = newRels;
         selectedId = null;
         recalculateGenerations();
         saveToLocalStorage();
@@ -2525,10 +2677,15 @@
 
       snapshot();
       const isApproved = (userRole === 'admin');
-      let created = 0;
 
-      if (fatherId && !getParents(childId).includes(fatherId)) {
-        relationships.push({
+      // We need to create these relationships one at a time because each needs
+      // to go through the Supabase API. Build an async chain.
+      const newRels = [];
+      const isDuplicateFather = fatherId && getParents(childId).includes(fatherId);
+      const isDuplicateMother = motherId && getParents(childId).includes(motherId);
+
+      if (fatherId && !isDuplicateFather) {
+        newRels.push({
           id: `r-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           person1Id: fatherId,
           person2Id: childId,
@@ -2536,10 +2693,9 @@
           approved: isApproved,
           addedBy: userRole
         });
-        created++;
       }
-      if (motherId && !getParents(childId).includes(motherId)) {
-        relationships.push({
+      if (motherId && !isDuplicateMother) {
+        newRels.push({
           id: `r-${Date.now() + 1}-${Math.floor(Math.random() * 1000)}`,
           person1Id: motherId,
           person2Id: childId,
@@ -2547,24 +2703,41 @@
           approved: isApproved,
           addedBy: userRole
         });
-        created++;
       }
 
-      if (created === 0) {
-        // Both already exist as parents — roll back the snapshot we just took
-        // so the undo stack doesn't show a no-op.
+      if (newRels.length === 0) {
         historyStack.pop();
         updateUndoState();
         showAlert('Both parents are already linked to this child', 'warning');
         return;
       }
 
-      recalculateGenerations();
-      saveToLocalStorage();
-      renderAll();
-      const childName = (members.find(m => m.id === childId) || {}).name || '?';
-      showAlert(`${childName} now has ${created} new parent link${created === 1 ? '' : 's'}`);
-      elRelationDialog.close();
+      // Persist each new relationship to Supabase
+      addMultipleRelationshipsSequentially(newRels).then(success => {
+        if (!success) {
+          historyStack.pop();
+          updateUndoState();
+          return;
+        }
+        // On success, push into local array
+        newRels.forEach(r => relationships.push(r));
+        recalculateGenerations();
+        saveToLocalStorage();
+        renderAll();
+        const childName = (members.find(m => m.id === childId) || {}).name || '?';
+        showAlert(`${childName} now has ${newRels.length} new parent link${newRels.length === 1 ? '' : 's'}`);
+        elRelationDialog.close();
+      });
+    }
+
+    async function addMultipleRelationshipsSequentially(rels) {
+      for (const rel of rels) {
+        const created = await dbAddRelationship(rel);
+        if (!created) return false;
+        // Copy server-id back if needed
+        Object.assign(rel, created);
+      }
+      return true;
     }
 
     function handleSiblingSave() {
@@ -2606,8 +2779,7 @@
       const group = getSiblingGroup(p2);
       const p1Parents = new Set(getParents(p1));
 
-      let siblingLinksCreated = 0;
-      let parentLinksInherited = 0;
+      const newRels = [];
       const skipped = [];
 
       // 1) Create sibling edges between P1 and every other member of P2's group.
@@ -2624,65 +2796,69 @@
            (r.person1Id === otherId && r.person2Id === p1))
         );
         if (isDuplicate) return;
-        relationships.push({
-          id: `r-${Date.now() + siblingLinksCreated}-${Math.floor(Math.random() * 1000)}`,
+        newRels.push({
+          id: `r-${Date.now() + newRels.length}-${Math.floor(Math.random() * 1000)}`,
           person1Id: p1,
           person2Id: otherId,
           type: 'sibling',
           approved: isApproved,
           addedBy: userRole
         });
-        siblingLinksCreated++;
       });
 
-      // 2) Inherit P2's parents onto P1. This is the "join the family" UX:
-      //    pick one sibling, the new member becomes a full child of the same
-      //    parents. We skip parents P1 already has (no duplicates) and skip
-      //    P1 themselves if they appear as a parent of P2 (impossible but
-      //    defensive against weird data).
+      // 2) Inherit P2's parents onto P1.
       const p2Parents = getParents(p2);
       p2Parents.forEach(parentId => {
         if (parentId === p1) return;
-        if (p1Parents.has(parentId)) return; // already has this parent
+        if (p1Parents.has(parentId)) return;
         const isDuplicate = relationships.some(r =>
           r.type === 'parent-child' && r.person1Id === parentId && r.person2Id === p1
         );
         if (isDuplicate) return;
-        relationships.push({
-          id: `r-${Date.now() + 100 + parentLinksInherited}-${Math.floor(Math.random() * 1000)}`,
+        newRels.push({
+          id: `r-${Date.now() + 100 + newRels.length}-${Math.floor(Math.random() * 1000)}`,
           person1Id: parentId,
           person2Id: p1,
           type: 'parent-child',
           approved: isApproved,
           addedBy: userRole
         });
-        parentLinksInherited++;
       });
 
-      if (siblingLinksCreated === 0 && parentLinksInherited === 0) {
-        // Nothing was actually created — roll back the snapshot.
+      if (newRels.length === 0) {
         historyStack.pop();
         updateUndoState();
         showAlert('No new links were created (already linked or blocked)', 'warning');
         return;
       }
 
-      recalculateGenerations();
-      saveToLocalStorage();
-      renderAll();
+      // Persist all new relationships to Supabase
+      addMultipleRelationshipsSequentially(newRels).then(success => {
+        if (!success) {
+          historyStack.pop();
+          updateUndoState();
+          return;
+        }
+        // On success, push into local array
+        newRels.forEach(r => relationships.push(r));
+        recalculateGenerations();
+        saveToLocalStorage();
+        renderAll();
 
-      // Compose a friendly summary.
-      const p1Name = (members.find(m => m.id === p1) || {}).name || '?';
-      const parts = [];
-      if (siblingLinksCreated > 0) parts.push(`siblings with ${siblingLinksCreated} ${siblingLinksCreated === 1 ? 'member' : 'members'}`);
-      if (parentLinksInherited > 0) parts.push(`inherited ${parentLinksInherited} parent${parentLinksInherited === 1 ? '' : 's'}`);
-      const summary = parts.length ? parts.join(' and ') : 'no new links';
-      if (skipped.length > 0) {
-        showAlert(`${p1Name} joined the family (${summary}). ${skipped.length} sibling link${skipped.length === 1 ? ' was' : 's were'} skipped due to kinship rules.`);
-      } else {
-        showAlert(`${p1Name} joined the family (${summary})`);
-      }
-      elRelationDialog.close();
+        const p1Name = (members.find(m => m.id === p1) || {}).name || '?';
+        const siblingCount = newRels.filter(r => r.type === 'sibling').length;
+        const parentCount = newRels.filter(r => r.type === 'parent-child').length;
+        const parts = [];
+        if (siblingCount > 0) parts.push(`siblings with ${siblingCount} ${siblingCount === 1 ? 'member' : 'members'}`);
+        if (parentCount > 0) parts.push(`inherited ${parentCount} parent${parentCount === 1 ? '' : 's'}`);
+        const summary = parts.length ? parts.join(' and ') : 'no new links';
+        if (skipped.length > 0) {
+          showAlert(`${p1Name} joined the family (${summary}). ${skipped.length} sibling link${skipped.length === 1 ? ' was' : 's were'} skipped due to kinship rules.`);
+        } else {
+          showAlert(`${p1Name} joined the family (${summary})`);
+        }
+        elRelationDialog.close();
+      });
     }
 
     // Admin Toggle lock button
