@@ -1,3 +1,3 @@
 # ─── Local secrets ────────────────────────────────────────────────────────────
 # config.js holds the Supabase URL and anon key. Never commit it.
-config.js
+
